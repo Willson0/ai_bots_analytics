@@ -474,22 +474,32 @@ class BotAnalyticsService
      */
     private function trialToPro(): array
     {
+        // Кол-во уникальных пользователей с пробной покупкой за период.
         $trialUsersQuery = $this->db->table('payments')
             ->where('is_bought', 1)
             ->where('summ', 1)
             ->whereBetween('created_at', [$this->fromStr(), $this->toStr()]);
         $this->applyUserFilter($trialUsersQuery, false);
-        $trialUsers = $trialUsersQuery->distinct()->pluck('user_id')->all();
+        $trialUsersCount = (int) $trialUsersQuery->distinct()->count('user_id');
 
-        $trialUsersCount = count($trialUsers);
         if ($trialUsersCount === 0) {
             return ['count' => 0, 'percent' => 0.0];
         }
 
+        // Из них — кто затем оплатил платную PRO. Через подзапрос,
+        // а не массив id (иначе на больших периодах превышается лимит
+        // плейсхолдеров MySQL — 65535).
         $converted = (int) $this->db->table('payments')
             ->where('is_bought', 1)
             ->where('summ', '<>', 1)
-            ->whereIn('user_id', $trialUsers)
+            ->whereIn('user_id', function ($q) {
+                $q->from('payments')
+                    ->select('user_id')
+                    ->where('is_bought', 1)
+                    ->where('summ', 1)
+                    ->whereBetween('created_at', [$this->fromStr(), $this->toStr()]);
+                $this->applyUserFilter($q, false);
+            })
             ->distinct()
             ->count('user_id');
 
