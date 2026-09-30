@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<template id="__bundler_thumbnail" data-bg-color="#f3f2f2"><svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg"><rect width="400" height="400" fill="#f3f2f2"/><rect x="120" y="220" width="40" height="60" fill="#201e1d"/><rect x="180" y="170" width="40" height="110" fill="#201e1d"/><rect x="240" y="120" width="40" height="160" fill="#ec3013"/><rect x="110" y="280" width="180" height="6" fill="#201e1d"/></svg></template>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/modernist-804648f8-48b4-49e3-a3c5-bb562440f8ff/styles.css">
+<script src="_ds/modernist-804648f8-48b4-49e3-a3c5-bb562440f8ff/_ds_bundle.js"></script>
+<style>body{margin:0;background:var(--color-neutral-300);-webkit-font-smoothing:antialiased}button{font:inherit;color:inherit}a{color:var(--color-accent)}a:hover{color:var(--color-accent-600)}@keyframes sheetIn{from{transform:translateY(100%)}to{transform:none}}@keyframes fadeIn{from{opacity:0}to{opacity:1}}</style>
+</helmet>
+<div style="max-width:440px;margin:0 auto;min-height:100vh;background:var(--color-bg);position:relative;font-variant-numeric:tabular-nums;box-shadow:var(--shadow-lg)">
+
+  <div style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:10px 16px;background:var(--color-surface);border-bottom:1px solid var(--color-divider);font-size:14px">
+    <span style="display:flex;align-items:center;gap:6px;color:var(--color-accent-700)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"></path></svg>Закрыть</span>
+    <span style="text-align:center;font-weight:600">{{ botName }}</span>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg>
+  </div>
+
+  <div style="padding:20px 16px 16px;display:flex;flex-direction:column;gap:4px">
+    <span style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-700);font-weight:600">Панель администратора</span>
+    <h1 style="margin:0;font-size:40px;line-height:1;letter-spacing:-.03em">Статистика</h1>
+    <span style="font-size:12px;color:var(--color-neutral-700)">Обновлено 28 сен, 14:32</span>
+  </div>
+  <button onClick="{{ openBot }}" style="width:100%;border:0;border-top:2px solid var(--color-divider);background:var(--color-surface);padding:12px 16px;text-align:left;cursor:pointer;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px" style-hover="background:var(--color-neutral-200)">
+    <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:800;padding:4px 6px;background:var(--color-text);color:var(--color-bg)">{{ botPlatform }}</span>
+    <span style="display:flex;flex-direction:column;min-width:0"><span style="font-size:11px;color:var(--color-neutral-700)">Бот</span><span style="font-size:16px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ botName }}</span></span>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"></path></svg>
+  </button>
+
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);border-top:2px solid var(--color-divider);border-bottom:2px solid var(--color-divider)">
+    <sc-for list="{{ periods }}" as="p" hint-placeholder-count="4">
+      <button onClick="{{ p.pick }}" style="border:0;border-right:1px solid var(--color-divider);padding:12px 8px;text-align:left;font-size:13px;font-weight:600;cursor:pointer;background:{{ p.bg }};color:{{ p.fg }}">{{ p.label }}</button>
+    </sc-for>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:2px solid var(--color-divider)">
+    <button onClick="{{ openLink }}" style="border:0;border-right:1px solid var(--color-divider);background:transparent;padding:10px 16px;text-align:left;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px" style-hover="background:color-mix(in srgb, var(--color-text) 6%, transparent)">
+      <span style="display:flex;flex-direction:column;min-width:0"><span style="font-size:11px;color:var(--color-neutral-700)">Ссылка</span><span style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ linkColor }}">{{ linkLabel }}</span></span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"></path></svg>
+    </button>
+    <button onClick="{{ openCp }}" style="border:0;background:transparent;padding:10px 16px;text-align:left;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px" style-hover="background:color-mix(in srgb, var(--color-text) 6%, transparent)">
+      <span style="display:flex;flex-direction:column;min-width:0"><span style="font-size:11px;color:var(--color-neutral-700)">Контрагент</span><span style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ cpColor }}">{{ cpLabel }}</span></span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"></path></svg>
+    </button>
+  </div>
+  <sc-if value="{{ hasFilter }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 16px;background:var(--color-accent-100);border-bottom:1px solid var(--color-divider);font-size:12px;color:var(--color-accent-800)">
+      <span>Фильтр: {{ filterText }}</span>
+      <button onClick="{{ resetFilters }}" style="border:0;background:transparent;padding:2px 0;cursor:pointer;font-weight:600;color:var(--color-accent-700);text-decoration:underline;text-underline-offset:3px">Сбросить</button>
+    </div>
+  </sc-if>
+
+  <div style="position:sticky;top:0;z-index:5;display:grid;grid-template-columns:repeat(4,1fr);background:var(--color-bg);border-bottom:2px solid var(--color-divider)">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+      <button onClick="{{ t.pick }}" style="border:0;background:transparent;padding:14px 8px 11px;text-align:left;cursor:pointer;font-size:13px;font-weight:800;border-bottom:3px solid {{ t.line }};color:{{ t.fg }}">{{ t.label }}</button>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{ isGen }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;flex-direction:column">
+      <sc-for list="{{ gen.big }}" as="k" hint-placeholder-count="2">
+      <button onClick="{{ k.open }}" style="width:100%;border:0;background:transparent;text-align:left;cursor:pointer;padding:20px 16px 16px;border-bottom:2px solid var(--color-divider);display:flex;flex-direction:column;gap:6px" style-hover="background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+        <span style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-700);font-weight:600">{{ k.label }}</span><span style="font-size:12px;font-weight:600;color:{{ k.dColor }}">{{ k.delta }}</span></span>
+        <span style="font-family:var(--font-heading);font-weight:800;font-size:48px;line-height:1;letter-spacing:-.03em">{{ k.v }}</span>
+        <span style="font-size:12px;color:var(--color-neutral-700)">{{ k.sub }}</span>
+        <sc-if value="{{ showCharts }}" hint-placeholder-val="{{ true }}">
+          <span style="display:flex;align-items:flex-end;gap:2px;height:56px;margin-top:10px;border-bottom:2px solid var(--color-text)">
+            <sc-for list="{{ k.series }}" as="b" hint-placeholder-count="30"><span style="flex:1;height:{{ b.h }};background:{{ b.c }}"></span></sc-for>
+          </span>
+          <span style="display:flex;justify-content:space-between;font-size:11px;color:var(--color-neutral-700)"><span>{{ axisFrom }}</span><span>{{ axisTo }}</span></span>
+        </sc-if>
+      </button>
+      </sc-for>
+      <div style="display:grid;grid-template-columns:1fr 1fr">
+        <sc-for list="{{ gen.pair }}" as="k" hint-placeholder-count="2">
+          <button onClick="{{ k.open }}" style="border:0;border-right:1px solid var(--color-divider);border-bottom:2px solid var(--color-divider);background:transparent;text-align:left;cursor:pointer;padding:16px;display:flex;flex-direction:column;gap:6px;min-width:0" style-hover="background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+            <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-700);font-weight:600">{{ k.label }}</span>
+            <span style="font-family:var(--font-heading);font-weight:800;font-size:30px;line-height:1;letter-spacing:-.02em">{{ k.v }}</span>
+            <span style="font-size:12px;color:var(--color-neutral-700)">{{ k.sub }}</span>
+            <span style="font-size:12px;font-weight:600;color:{{ k.dColor }}">{{ k.delta }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:18px 16px 8px;border-bottom:2px solid var(--color-divider)">
+        <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:800">Рефералы за период</span>
+        <span style="font-size:12px;color:var(--color-neutral-700)">% от новых юзеров</span>
+      </div>
+      <sc-for list="{{ gen.refs }}" as="r" hint-placeholder-count="2">
+        <button onClick="{{ r.open }}" style="width:100%;border:0;border-bottom:1px solid var(--color-divider);background:transparent;text-align:left;cursor:pointer;padding:14px 16px;display:grid;grid-template-columns:minmax(0,1fr) 72px;gap:6px 16px;align-items:center" style-hover="background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+          <span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:14px;font-weight:600">{{ r.label }}</span><span style="font-size:12px;color:var(--color-neutral-700)">{{ r.v }} юзеров <span style="font-weight:600;color:{{ r.dColor }}">{{ r.delta }}</span></span></span>
+          <span style="font-family:var(--font-heading);font-weight:800;font-size:24px;line-height:1;text-align:right">{{ r.pct }}</span>
+          <span style="grid-column:1 / -1;display:block;height:6px;background:var(--color-neutral-200)"><span style="display:block;height:100%;width:{{ r.w }};background:var(--color-accent)"></span></span>
+        </button>
+      </sc-for>
+      <div style="height:24px"></div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isAi }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column">
+      <div style="padding:20px 16px 16px;border-bottom:2px solid var(--color-divider);display:flex;flex-direction:column;gap:8px">
+        <span style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-700);font-weight:600">Всего запросов к нейросетям</span><span style="font-size:12px;font-weight:600;color:{{ ai.dColor }}">{{ ai.delta }}</span></span>
+        <span style="font-family:var(--font-heading);font-weight:800;font-size:48px;line-height:1;letter-spacing:-.03em">{{ ai.total }}</span>
+        <span style="display:flex;height:12px;margin-top:6px">
+          <sc-for list="{{ ai.groups }}" as="g" hint-placeholder-count="3"><span style="height:100%;width:{{ g.w }};background:{{ g.c }}"></span></sc-for>
+        </span>
+        <span style="display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px">
+          <sc-for list="{{ ai.groups }}" as="g" hint-placeholder-count="3"><span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;background:{{ g.c }}"></span>{{ g.name }} <b>{{ g.pct }}</b></span></sc-for>
+        </span>
+      </div>
+      <sc-for list="{{ ai.groups }}" as="g" hint-placeholder-count="3">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding:18px 16px 8px;border-bottom:2px solid var(--color-divider)">
+          <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:800">{{ g.name }}</span>
+          <span style="font-size:12px;color:var(--color-neutral-700)">{{ g.v }} · {{ g.pct }}</span>
+        </div>
+        <sc-for list="{{ g.items }}" as="m" hint-placeholder-count="4">
+          <button onClick="{{ m.open }}" style="width:100%;border:0;border-bottom:1px solid var(--color-divider);background:transparent;text-align:left;cursor:pointer;padding:12px 16px;display:flex;flex-direction:column;gap:8px" style-hover="background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+            <span style="display:grid;grid-template-columns:minmax(0,1fr) auto 56px;gap:12px;align-items:baseline;font-size:14px">
+              <span style="font-weight:600">{{ m.name }}</span>
+              <span style="color:var(--color-neutral-700)">{{ m.v }}</span>
+              <span style="text-align:right;font-weight:800">{{ m.pct }}</span>
+            </span>
+            <span style="display:block;height:4px;background:var(--color-neutral-200)"><span style="display:block;height:100%;width:{{ m.w }};background:{{ g.c }}"></span></span>
+          </button>
+        </sc-for>
+      </sc-for>
+      <p style="margin:0;padding:12px 16px 24px;font-size:12px;color:var(--color-neutral-700)">Процент — доля от всех запросов к нейросетям за выбранный период, включая фото и редиректы.</p>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isShop }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column">
+      <div style="display:grid;grid-template-columns:1fr 1fr">
+        <sc-for list="{{ shop.kpis }}" as="k" hint-placeholder-count="2">
+          <button onClick="{{ k.open }}" style="border:0;border-right:1px solid var(--color-divider);border-bottom:2px solid var(--color-divider);background:transparent;text-align:left;cursor:pointer;padding:18px 16px 16px;display:flex;flex-direction:column;gap:6px;min-width:0" style-hover="background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+            <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-700);font-weight:600">{{ k.label }}</span>
+            <span style="font-family:var(--font-heading);font-weight:800;font-size:28px;line-height:1;letter-spacing:-.02em">{{ k.v }}</span>
+            <span style="font-size:12px;color:var(--color-neutral-700)">{{ k.sub }}</span>
+            <span style="font-size:12px;font-weight:600;color:{{ k.dColor }}">{{ k.delta }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:18px 16px 8px;border-bottom:2px solid var(--color-divider)">
+        <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:800">Подписки</span>
+        <span style="font-size:12px;color:var(--color-neutral-700)">оформили за период · {{ shop.subsTotal }}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr">
+        <sc-for list="{{ shop.subs }}" as="s" hint-placeholder-count="2">
+          <button onClick="{{ s.open }}" style="border:0;border-right:1px solid var(--color-divider);border-bottom:1px solid var(--color-divider);background:transparent;text-align:left;cursor:pointer;padding:16px;display:flex;flex-direction:column;gap:4px" style-hover="background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+            <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-neutral-700)"><span style="width:8px;height:8px;background:{{ s.c }}"></span>{{ s.name }}</span>
+            <span style="font-family:var(--font-heading);font-weight:800;font-size:30px;line-height:1">{{ s.v }}</span>
+            <span style="font-size:12px;color:var(--color-neutral-700)">{{ s.pct }} от всех</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="padding:16px;background:var(--color-accent);color:var(--color-bg);display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:center;border-bottom:2px solid var(--color-divider)">
+        <span style="font-family:var(--font-heading);font-weight:800;font-size:44px;line-height:1;letter-spacing:-.03em">{{ shop.trialRenew }}</span>
+        <span style="font-size:13px;line-height:1.35"><b>Продлевают пробную подписку</b><br>{{ shop.trialRenewSub }}</span>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:18px 16px 8px;border-bottom:2px solid var(--color-divider)">
+        <span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:800">Покупки по товарам</span>
+        <span style="font-size:12px;color:var(--color-neutral-700)">всего {{ shop.count }}</span>
+      </div>
+      <sc-for list="{{ shop.products }}" as="p" hint-placeholder-count="7">
+        <button onClick="{{ p.open }}" style="width:100%;border:0;border-bottom:1px solid var(--color-divider);background:transparent;text-align:left;cursor:pointer;padding:12px 16px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:baseline" style-hover="background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+          <span style="font-size:14px;font-weight:600">{{ p.name }}</span>
+          <span style="font-size:18px;font-weight:800;text-align:right">{{ p.v }}</span>
+          <span style="font-size:12px;color:var(--color-neutral-700)">{{ p.price }}</span>
+          <span style="font-size:12px;color:var(--color-neutral-700);text-align:right">{{ p.rev }}</span>
+        </button>
+      </sc-for>
+
+
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isBtn }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;flex-direction:column">
+      <div style="padding:20px 16px 16px;border-bottom:2px solid var(--color-divider);display:flex;flex-direction:column;gap:6px">
+        <span style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-700);font-weight:600">Нажатий на кнопки</span><span style="font-size:12px;font-weight:600;color:{{ btn.dColor }}">{{ btn.delta }}</span></span>
+        <span style="font-family:var(--font-heading);font-weight:800;font-size:48px;line-height:1;letter-spacing:-.03em">{{ btn.total }}</span>
+        <span style="font-size:12px;color:var(--color-neutral-700)">{{ btn.users }} уникальных пользователей</span>
+      </div>
+      <sc-for list="{{ btn.items }}" as="m" hint-placeholder-count="9">
+        <button onClick="{{ m.open }}" style="width:100%;border:0;border-bottom:1px solid var(--color-divider);background:transparent;text-align:left;cursor:pointer;padding:12px 16px;display:flex;flex-direction:column;gap:8px" style-hover="background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+          <span style="display:grid;grid-template-columns:22px minmax(0,1fr) auto 52px;gap:10px;align-items:baseline;font-size:14px">
+            <span style="font-size:12px;color:var(--color-neutral-600)">{{ m.n }}</span>
+            <span style="font-weight:600">{{ m.name }}</span>
+            <span style="color:var(--color-neutral-700)">{{ m.v }}</span>
+            <span style="text-align:right;font-weight:800">{{ m.pct }}</span>
+          </span>
+          <span style="display:block;height:4px;margin-left:32px;background:var(--color-neutral-200)"><span style="display:block;height:100%;width:{{ m.w }};background:var(--color-text)"></span></span>
+        </button>
+      </sc-for>
+      <p style="margin:0;padding:12px 16px 24px;font-size:12px;color:var(--color-neutral-700)">Нажмите на строку, чтобы увидеть динамику за период.</p>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ sheetOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeSheet }}" style="position:fixed;inset:0;z-index:20;background:color-mix(in srgb, var(--color-neutral-900) 50%, transparent);animation:fadeIn .18s ease-out"></div>
+    <div style="position:fixed;z-index:21;bottom:0;left:0;right:0;max-width:440px;margin:0 auto;max-height:84vh;overflow:auto;background:var(--color-bg);border-top:3px solid var(--color-accent);box-shadow:var(--shadow-lg);animation:sheetIn .24s cubic-bezier(.2,.8,.2,1)">
+      <div style="position:sticky;top:0;background:var(--color-bg);display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:14px 16px;border-bottom:2px solid var(--color-divider)">
+        <span style="display:flex;flex-direction:column"><span style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-accent-700);font-weight:600">{{ sheet.kicker }}</span><span style="font-family:var(--font-heading);font-weight:800;font-size:20px;line-height:1.15">{{ sheet.title }}</span></span>
+        <button onClick="{{ closeSheet }}" style="width:40px;height:40px;border:1px solid var(--color-divider);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:color-mix(in srgb, var(--color-text) 7%, transparent)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+      </div>
+
+      <sc-if value="{{ sheet.isPick }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:12px 16px;border-bottom:2px solid var(--color-divider);position:relative">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute;left:28px;top:50%;transform:translateY(-50%);color:var(--color-neutral-600);pointer-events:none"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+          <input class="input" type="search" autoFocus="{{ true }}" value="{{ q }}" onChange="{{ onQ }}" placeholder="{{ sheet.ph }}" style="min-height:44px;padding-left:36px;font-size:15px"></input>
+        </div>
+        <sc-if value="{{ sheet.none }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:20px 16px;display:flex;flex-direction:column;gap:4px"><span style="font-size:15px;font-weight:600">Ничего не найдено</span><span style="font-size:13px;color:var(--color-neutral-700)">Попробуйте другой запрос</span></div>
+        </sc-if>
+        <sc-for list="{{ sheet.options }}" as="o" hint-placeholder-count="5">
+          <button onClick="{{ o.pick }}" style="width:100%;border:0;border-bottom:1px solid var(--color-divider);background:{{ o.bg }};text-align:left;cursor:pointer;padding:14px 16px;display:grid;grid-template-columns:minmax(0,1fr) 20px;gap:12px;align-items:center" style-hover="background:color-mix(in srgb, var(--color-text) 5%, transparent)">
+            <span style="display:flex;flex-direction:column;min-width:0"><span style="font-size:15px;font-weight:600">{{ o.name }}</span><span style="font-size:12px;color:var(--color-neutral-700);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ o.sub }}</span></span>
+            <sc-if value="{{ o.on }}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2.6"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+          </button>
+        </sc-for>
+        <div style="height:24px"></div>
+      </sc-if>
+
+      <sc-if value="{{ sheet.isDetail }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:18px 16px 16px;display:flex;flex-direction:column;gap:6px;border-bottom:2px solid var(--color-divider)">
+          <span style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:12px;color:var(--color-neutral-700)">{{ periodLabel }} · {{ filterShort }}</span><span style="font-size:12px;font-weight:600;color:{{ sheet.dColor }}">{{ sheet.delta }}</span></span>
+          <span style="font-family:var(--font-heading);font-weight:800;font-size:52px;line-height:1;letter-spacing:-.03em">{{ sheet.v }}</span>
+          <span style="display:flex;align-items:flex-end;gap:2px;height:110px;margin-top:12px;border-bottom:2px solid var(--color-text)">
+            <sc-for list="{{ sheet.series }}" as="b" hint-placeholder-count="30"><span style="flex:1;height:{{ b.h }};background:{{ b.c }}"></span></sc-for>
+          </span>
+          <span style="display:flex;justify-content:space-between;font-size:11px;color:var(--color-neutral-700)"><span>{{ axisFrom }}</span><span>{{ axisTo }}</span></span>
+        </div>
+        <sc-if value="{{ sheet.hasBreak }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:18px 16px 8px;border-bottom:2px solid var(--color-divider);font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:800">По ссылкам</div>
+          <sc-for list="{{ sheet.rows }}" as="r" hint-placeholder-count="5">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--color-divider);display:flex;flex-direction:column;gap:6px">
+              <span style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:baseline">
+                <span style="display:flex;flex-direction:column;min-width:0"><span style="font-size:14px;font-weight:600">{{ r.name }}</span><span style="font-size:12px;color:var(--color-neutral-700)">{{ r.cp }}</span></span>
+                <span style="font-size:16px;font-weight:800">{{ r.v }}</span>
+              </span>
+              <span style="display:block;height:4px;background:var(--color-neutral-200)"><span style="display:block;height:100%;width:{{ r.w }};background:var(--color-accent)"></span></span>
+            </div>
+          </sc-for>
+        </sc-if>
+        <div style="height:24px"></div>
+      </sc-if>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:440,&quot;height&quot;:900},&quot;showDeltas&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Отображение&quot;},&quot;showCharts&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Отображение&quot;}}">
+class Component extends DCLogic {
+  state = { bot: 'tg_hypergpt', period: '30', link: 'all', cp: 'all', tab: 'gen', sheet: null, detail: null, q: '' };
+
+  static BOTS = [
+    ['max_hypergpt', 0.42], ['max_flashgpt', 0.31], ['max_prostogpt', 0.18],
+    ['tg_hypergpt', 1], ['tg_flashgpt', 0.74], ['tg_prostogpt', 0.46], ['tg_cloudgpt', 0.29],
+  ];
+  static PERIODS = [
+    { k: '1', label: 'Сутки', pf: 0.036, af: 0.22, bins: 24, from: '00:00', to: 'сейчас', long: 'за сутки' },
+    { k: '7', label: '7 дней', pf: 0.235, af: 0.58, bins: 7, from: '22 сен', to: '28 сен', long: 'за 7 дней' },
+    { k: '30', label: '30 дней', pf: 1, af: 1, bins: 30, from: '30 авг', to: '28 сен', long: 'за 30 дней' },
+    { k: 'all', label: 'Всё время', pf: 5.4, af: 3.1, bins: 29, from: '12 мар', to: '28 сен', long: 'за всё время' },
+  ];
+  static CPS = [
+    { id: 'tgads', name: 'Telegram Ads' },
+    { id: 'sasha', name: 'Блогер @techsasha' },
+    { id: 'neuro', name: 'Neuro Partners' },
+    { id: 'org', name: 'Органика' },
+  ];
+  static LINKS = [
+    { id: 'tg_ads_sept', cp: 'tgads', share: 0.34 },
+    { id: 'tg_ads_aug', cp: 'tgads', share: 0.09 },
+    { id: 'yt_review', cp: 'sasha', share: 0.17 },
+    { id: 'insta_bio', cp: 'sasha', share: 0.08 },
+    { id: 'partner_neuro', cp: 'neuro', share: 0.18 },
+    { id: 'без метки', cp: 'org', share: 0.14 },
+  ];
+  static MODELS = [
+    { g: 'Текст', c: 'var(--color-text)', items: [['GPT-4o', .21], ['GPT-4o mini', .17], ['Claude Sonnet', .12], ['Gemini Pro', .08], ['DeepSeek', .07]] },
+    { g: 'Фото', c: 'var(--color-accent)', items: [['Nano Banana', .11], ['Nano Banana PRO', .08], ['GPT Image 2', .05]] },
+    { g: 'Редиректы', c: 'var(--color-neutral-500)', items: [['Текст', .05], ['Фото', .04], ['Не выбрали', .02]] },
+  ];
+  static PRODUCTS = [
+    ['Токены · 500', 149, 412], ['Токены · 2 000', 490, 238], ['Токены · 10 000', 1990, 64],
+    ['Подписка PRO', 799, 527],
+    ['Доп. фото · 50 шт', 99, 129],
+  ];
+  static BUTTONS = [
+    ['Выбрать нейросеть', 9840], ['/start', 6120], ['Создать изображение', 5210], ['Мой профиль', 3140],
+    ['Купить подписку', 2380], ['Купить токены', 1960], ['Пригласить друга', 1170], ['Помощь', 640], ['Поддержка', 410],
+  ];
+
+  rnd(key) {
+    let h = 2166136261;
+    for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619); }
+    h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995); h ^= h >>> 15;
+    return ((h >>> 0) % 10000) / 10000;
+  }
+  fmt(n) { return Math.round(n).toLocaleString('ru-RU'); }
+  fv(v, unit) {
+    if (unit === '%') return v.toFixed(1).replace('.', ',') + '%';
+    if (unit === '₽') return this.fmt(v) + ' ₽';
+    return this.fmt(v);
+  }
+  scope() {
+    const { link, cp } = this.state, L = Component.LINKS;
+    if (link !== 'all') return L.filter(l => l.id === link);
+    if (cp !== 'all') return L.filter(l => l.cp === cp);
+    return L;
+  }
+  fk() { const s = this.state; return s.bot + '|' + s.period + '|' + s.link + '|' + s.cp; }
+  j(k, a) { return 1 + (this.rnd(this.fk() + k) - 0.5) * 2 * a; }
+  delta(k) {
+    if (this.state.period === 'all' || this.props.showDeltas === false) return { delta: '', dColor: 'inherit' };
+    const d = (this.rnd(this.fk() + 'd' + k) - 0.38) * 34;
+    return { delta: (d >= 0 ? '↑ +' : '↓ ') + d.toFixed(1).replace('.', ',') + '%', dColor: d >= 0 ? 'var(--color-text)' : 'var(--color-accent-700)' };
+  }
+  series(k, rate) {
+    const P = Component.PERIODS.find(p => p.k === this.state.period), n = P.bins, w = [];
+    for (let i = 0; i < n; i++) {
+      let v = 0.7 + 0.6 * this.rnd(this.fk() + k + 's' + i);
+      if (P.k === '1') v *= 0.25 + Math.max(0, Math.sin(Math.PI * (i - 6) / 18)) * 1.2;
+      else if (!rate) v *= 1 + (i / n) * (P.k === 'all' ? 1.4 : 0.3);
+      w.push(v);
+    }
+    const max = Math.max(...w);
+    return w.map((v, i) => ({ h: Math.max(4, v / max * 100) + '%', c: i === n - 1 ? 'var(--color-accent)' : 'var(--color-neutral-800)' }));
+  }
+  open(d) { this.setState({ sheet: 'detail', detail: d }); }
+
+  renderVals() {
+    const st = this.state, C = Component;
+    const P = C.PERIODS.find(p => p.k === st.period);
+    const bf = C.BOTS.find(b => b[0] === st.bot)[1];
+    const sc = this.scope(), s = sc.reduce((a, l) => a + l.share, 0) * bf;
+    const n = (base, k, a = 0.08) => Math.round(base * P.pf * s * this.j(k, a));
+    const pct = (x) => (x * 100).toFixed(1).replace('.', ',') + '%';
+    const cpName = id => (C.CPS.find(c => c.id === id) || {}).name;
+    const det = (title, value, unit, kind, key) => () => this.open({ title, value, unit, kind, key });
+
+    const periods = C.PERIODS.map(p => ({ label: p.label, pick: () => this.setState({ period: p.k }),
+      bg: p.k === st.period ? 'var(--color-accent)' : 'transparent', fg: p.k === st.period ? 'var(--color-bg)' : 'var(--color-text)' }));
+    const tabs = [['gen', 'Общее'], ['ai', 'Нейросети'], ['shop', 'Покупки'], ['btn', 'Кнопки']].map(([k, label]) => ({ label,
+      pick: () => this.setState({ tab: k }), line: k === st.tab ? 'var(--color-accent)' : 'transparent', fg: k === st.tab ? 'var(--color-text)' : 'var(--color-neutral-600)' }));
+
+    // Общее
+    const actV = Math.round(12650 * P.af * (0.4 + 0.6 * s) * this.j('act', 0.06));
+    const newV = n(6100, 'new');
+    const part = (k, base, a) => Math.round(newV * base * this.j(k, a));
+    const premV = part('prem', 0.19, 0.12), opV = part('op', 0.64, 0.06), linkRef = part('lref', 0.58, 0.08), userRef = part('uref', 0.17, 0.15);
+    const ofNew = v => pct(newV ? v / newV : 0);
+    const gen = {
+      big: [
+        { label: 'Активные юзеры', v: this.fmt(actV), sub: 'пользовались ботом за период', ...this.delta('act'), series: this.series('act'), open: det('Активные юзеры', actV, '', 'count', 'act') },
+        { label: 'Новые юзеры', v: this.fmt(newV), sub: 'впервые запустили бота за период', ...this.delta('new'), series: this.series('new'), open: det('Новые юзеры', newV, '', 'count', 'new') },
+      ],
+      pair: [
+        { label: 'С Telegram Premium', v: this.fmt(premV), sub: ofNew(premV) + ' новых юзеров', ...this.delta('prem'), open: det('Новые юзеры с Telegram Premium', premV, '', 'count', 'prem') },
+        { label: 'Подписались на ОП', v: this.fmt(opV), sub: ofNew(opV) + ' новых юзеров', ...this.delta('op'), open: det('Подписались на ОП', opV, '', 'count', 'op') },
+      ],
+      refs: [
+        { label: 'По реф. ссылкам', v: this.fmt(linkRef), pct: ofNew(linkRef), w: (newV ? linkRef / newV * 100 : 0) + '%', ...this.delta('lref'), open: det('Рефералы по реф. ссылкам', linkRef, '', 'count', 'lref') },
+        { label: 'От пользователей', v: this.fmt(userRef), pct: ofNew(userRef), w: (newV ? userRef / newV * 100 : 0) + '%', ...this.delta('uref'), open: det('Рефералы от пользователей', userRef, '', 'count', 'uref') },
+      ],
+    };
+
+    // Нейросети
+    const reqBase = 186400 * P.pf * s;
+    let groups = C.MODELS.map(g => ({ name: g.g, c: g.c, items: g.items.map(([name, sh]) => ({ name, cnt: Math.round(reqBase * sh * this.j(name, 0.1)) })) }));
+    const total = groups.reduce((a, g) => a + g.items.reduce((b, m) => b + m.cnt, 0), 0) || 1;
+    const maxM = Math.max(...groups.flatMap(g => g.items.map(m => m.cnt)), 1);
+    groups = groups.map(g => {
+      const gv = g.items.reduce((b, m) => b + m.cnt, 0);
+      return { name: g.name, c: g.c, v: this.fmt(gv), pct: pct(gv / total), w: (gv / total * 100) + '%', items: g.items.map(m => ({ name: m.name, v: this.fmt(m.cnt), pct: pct(m.cnt / total), w: (m.cnt / maxM * 100) + '%', open: det(m.name, m.cnt, '', 'count', m.name) })) };
+    });
+    const ai = { total: this.fmt(total), groups, ...this.delta('req') };
+
+    // Покупки
+    const prods = C.PRODUCTS.map(([name, price, base]) => ({ name, price, cnt: n(base, name, 0.12) }));
+    const cnt = prods.reduce((a, p) => a + p.cnt, 0), rev = prods.reduce((a, p) => a + p.cnt * p.price, 0);
+    const avgCheck = cnt ? rev / cnt : 0;
+    const startUsers = n(6120, 'b/start', 0.1);
+    const startRev = startUsers ? rev / startUsers : 0;
+    const buyers = Math.round(cnt * 0.78);
+    const onlyTok = 0.38 * this.j('ot', 0.08), onlySub = 0.44 * this.j('os', 0.06), subPhoto = 0.27 * this.j('sp', 0.12);
+    const subsRaw = [['Пробная', 214 * 2.4, 'var(--color-neutral-500)'], ['PRO', 527, 'var(--color-accent)']]
+      .map(([name, b, c]) => ({ name, c, cnt: n(b, 'sub' + name, 0.1) }));
+    const subsTotal = subsRaw.reduce((a, x) => a + x.cnt, 0) || 1;
+    const trial = 0.314 * this.j('tr', 0.1);
+    const shop = {
+      kpis: [
+        { label: 'Средний чек', v: this.fv(avgCheck, '₽'), sub: 'на одну покупку', ...this.delta('chk'), open: det('Средний чек', avgCheck, '₽', 'rate', 'chk') },
+        { label: 'Доход со старта', v: this.fv(startRev, '₽'), sub: 'доход за период / ' + this.fmt(startUsers) + ' юзеров /start', ...this.delta('start'), open: det('Доход со старта', startRev, '₽', 'rate', 'start') },
+      ],
+      count: this.fmt(cnt),
+      products: prods.map(p => ({ name: p.name, v: this.fmt(p.cnt), price: this.fv(p.price, '₽'), rev: this.fv(p.cnt * p.price, '₽'), open: det(p.name, p.cnt, '', 'count', p.name) })),
+      buyers: this.fmt(buyers),
+      rates: [
+        { v: pct(onlyTok), w: onlyTok * 100 + '%', label: 'Только токены', sub: '— от всех, кто совершил покупку', c: 'var(--color-text)' },
+        { v: pct(onlySub), w: onlySub * 100 + '%', label: 'Только подписка', sub: '— от всех, кто совершил покупку', c: 'var(--color-text)' },
+        { v: pct(subPhoto), w: subPhoto * 100 + '%', label: 'Докупают доп. фото', sub: '— от всех, кто купил подписку', c: 'var(--color-accent-700)' },
+      ],
+      subs: subsRaw.map(x => ({ name: x.name, c: x.c, v: this.fmt(x.cnt), pct: pct(x.cnt / subsTotal), open: det('Подписка ' + x.name, x.cnt, '', 'count', 'sub' + x.name) })),
+      subsTotal: this.fmt(subsTotal),
+      trialRenew: pct(trial),
+      trialRenewSub: this.fmt(subsRaw[0].cnt * trial) + ' из ' + this.fmt(subsRaw[0].cnt) + ' перешли на платную',
+    };
+
+    // Кнопки
+    const bRaw = C.BUTTONS.map(([name, b]) => ({ name, cnt: n(b, 'b' + name, 0.1) }));
+    const bt = bRaw.reduce((a, x) => a + x.cnt, 0) || 1, bMax = Math.max(...bRaw.map(x => x.cnt), 1);
+    const btn = { total: this.fmt(bt), users: this.fmt(actV * 0.83), ...this.delta('btn'),
+      items: bRaw.map((x, i) => ({ n: String(i + 1).padStart(2, '0'), name: x.name, v: this.fmt(x.cnt), pct: pct(x.cnt / bt), w: (x.cnt / bMax * 100) + '%', open: det('Кнопка «' + x.name + '»', x.cnt, '', 'count', 'b' + x.name) })) };
+
+    // Filters
+    const linkLabel = st.link === 'all' ? 'Все ссылки' : st.link;
+    const cpLabel = st.cp === 'all' ? 'Все' : cpName(st.cp);
+    const hasFilter = st.link !== 'all' || st.cp !== 'all';
+    const filterShort = hasFilter ? [st.cp !== 'all' ? cpLabel : null, st.link !== 'all' ? st.link : null].filter(Boolean).join(' · ') : 'все ссылки и контрагенты';
+
+    // Sheet
+    let sheet = {};
+    if (st.sheet === 'bot') {
+      sheet = { isPick: true, kicker: 'Обзор статистики', title: 'Бот', options: C.BOTS.map(([id]) => ({ id, name: id, sub: id.startsWith('max_') ? 'MAX' : 'Telegram',
+        on: id === st.bot, bg: id === st.bot ? 'var(--color-accent-100)' : 'transparent', pick: () => this.setState({ bot: id, sheet: null }) })) };
+    } else if (st.sheet === 'link') {
+      const pool = st.cp === 'all' ? C.LINKS : C.LINKS.filter(l => l.cp === st.cp);
+      sheet = { isPick: true, kicker: 'Фильтр', title: 'Ссылка', options: [{ id: 'all', name: 'Все ссылки', sub: st.cp === 'all' ? 'Общая статистика' : 'Все ссылки контрагента ' + cpLabel }]
+        .concat(pool.map(l => ({ id: l.id, name: l.id, sub: (l.id === 'без метки' ? 'прямые переходы · ' : 't.me/neurobot?start=' + l.id + ' · ') + cpName(l.cp) })))
+        .map(o => ({ ...o, on: o.id === st.link, bg: o.id === st.link ? 'var(--color-accent-100)' : 'transparent', pick: () => this.setState({ link: o.id, sheet: null }) })) };
+    } else if (st.sheet === 'cp') {
+      sheet = { isPick: true, kicker: 'Фильтр', title: 'Контрагент', options: [{ id: 'all', name: 'Все', sub: 'Общая статистика' }]
+        .concat(C.CPS.map(c => ({ id: c.id, name: c.name, sub: C.LINKS.filter(l => l.cp === c.id).map(l => l.id).join(', ') })))
+        .map(o => ({ ...o, on: o.id === st.cp, bg: o.id === st.cp ? 'var(--color-accent-100)' : 'transparent',
+          pick: () => this.setState(s0 => { const lk = C.LINKS.find(l => l.id === s0.link); return { cp: o.id, sheet: null, link: o.id === 'all' || (lk && lk.cp === o.id) ? s0.link : 'all' }; }) })) };
+    }
+    if (sheet.isPick) {
+      const q = st.q.trim().toLowerCase();
+      sheet.ph = st.sheet === 'bot' ? 'Поиск бота' : st.sheet === 'link' ? 'Поиск по ссылке или контрагенту' : 'Поиск по названию или ссылке';
+      if (q) sheet.options = sheet.options.filter(o => o.id !== 'all' && (o.name + ' ' + o.sub).toLowerCase().includes(q));
+      sheet.none = sheet.options.length === 0;
+    }
+    if (st.sheet === 'detail' && st.detail) {
+      const d = st.detail;
+      const rows = sc.map(l => {
+        const v = d.kind === 'count' ? d.value * l.share / s : d.value * (1 + (this.rnd(d.key + l.id) - 0.5) * 0.5);
+        return { name: l.id, cp: cpName(l.cp), raw: v };
+      }).sort((a, b) => b.raw - a.raw);
+      const rMax = Math.max(...rows.map(r => r.raw), 1);
+      sheet = { isDetail: true, kicker: 'Подробно', title: d.title, v: this.fv(d.value, d.unit), ...this.delta(d.key),
+        series: this.series(d.key, d.kind === 'rate'), hasBreak: false,
+        rows: rows.map(r => ({ name: r.name, cp: r.cp, v: this.fv(r.raw, d.unit), w: (r.raw / rMax * 100) + '%' })) };
+    }
+
+    return {
+      periods, tabs, gen, ai, shop, btn, sheet,
+      isGen: st.tab === 'gen', isAi: st.tab === 'ai', isShop: st.tab === 'shop', isBtn: st.tab === 'btn',
+      showCharts: this.props.showCharts !== false,
+      axisFrom: P.from, axisTo: P.to, periodLabel: P.long,
+      linkLabel, cpLabel, hasFilter, filterShort,
+      linkColor: st.link === 'all' ? 'var(--color-text)' : 'var(--color-accent-700)',
+      cpColor: st.cp === 'all' ? 'var(--color-text)' : 'var(--color-accent-700)',
+      filterText: filterShort,
+      sheetOpen: !!st.sheet,
+      openLink: () => this.setState({ sheet: 'link', q: '' }),
+      openCp: () => this.setState({ sheet: 'cp', q: '' }),
+      openBot: () => this.setState({ sheet: 'bot', q: '' }),
+      botName: st.bot,
+      botPlatform: st.bot.startsWith('max_') ? 'MAX' : 'TG',
+      q: st.q,
+      onQ: e => this.setState({ q: e.target.value }),
+      closeSheet: () => this.setState({ sheet: null }),
+      resetFilters: () => this.setState({ link: 'all', cp: 'all' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

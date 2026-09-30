@@ -1,10 +1,10 @@
 import { createApp } from 'vue'
-import './assets/main.css'
 import App from './App.vue'
-import router from "./router.js";
-import store from './storage.js';
+import { initTelegram } from './telegram'
+import './assets/modernist.css'
+import './assets/app.css'
 
-const app = createApp(App)
+// Инициализация Telegram Mini App (ready/expand/тема). Вне Telegram — no-op.
+initTelegram()
 
-app.use(store).use(router)
-app.mount('#app')
+createApp(App).mount('#app')

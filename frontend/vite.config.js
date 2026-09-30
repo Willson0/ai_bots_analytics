@@ -1,18 +1,16 @@
-import { fileURLToPath, URL } from 'node:url'
-
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import vueDevTools from 'vite-plugin-vue-devtools'
 
-// https://vite.dev/config/
+// Для локальной разработки: проксируем /api на локальный бэкенд (php artisan serve),
+// чтобы работать без CORS. В проде фронт и /api отдаёт один и тот же nginx.
 export default defineConfig({
-  plugins: [
-    vue(),
-    vueDevTools(),
-  ],
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
+  plugins: [vue()],
+  server: {
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_PROXY || 'http://localhost:8000',
+        changeOrigin: true,
+      },
     },
   },
 })

@@ -1,0 +1,59 @@
+/* Глобальные стили экрана. Токены берутся из modernist.css. */
+
+body { margin: 0; background: var(--color-neutral-300); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; }
+a { color: var(--color-accent); }
+a:hover { color: var(--color-accent-600); }
+
+@keyframes sheetIn { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .sheet, .sheet-backdrop { animation: none !important; }
+}
+
+/* ---------- каркас ---------- */
+.shell {
+  max-width: 440px; margin: 0 auto; min-height: 100vh; position: relative;
+  background: var(--color-bg); font-variant-numeric: tabular-nums; box-shadow: var(--shadow-lg);
+}
+.stack { display: flex; flex-direction: column; }
+.spacer { height: 24px; }
+
+/* ---------- общие строки-кнопки ---------- */
+.row {
+  width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer;
+}
+.row:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+.row--line { border-bottom: 1px solid var(--color-divider); }
+.row--rule { border-bottom: 2px solid var(--color-divider); }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; }
+.cell {
+  border: 0; border-right: 1px solid var(--color-divider); background: transparent;
+  text-align: left; cursor: pointer; min-width: 0; display: flex; flex-direction: column; gap: 6px;
+}
+.cell:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+
+/* ---------- типографика ---------- */
+.kicker { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--color-neutral-700); font-weight: 600; }
+.kicker--strong { color: var(--color-text); font-weight: 800; }
+.muted { font-size: 12px; color: var(--color-neutral-700); }
+.delta { font-size: 12px; font-weight: 600; }
+.num { font-family: var(--font-heading); font-weight: 800; line-height: 1; letter-spacing: -.03em; }
+.num--xl { font-size: 52px; }
+.num--lg { font-size: 48px; }
+.num--md { font-size: 30px; letter-spacing: -.02em; }
+.num--sm { font-size: 28px; letter-spacing: -.02em; }
+.split { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.section-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 18px 16px 8px; border-bottom: 2px solid var(--color-divider);
+}
+.note { margin: 0; padding: 12px 16px 24px; font-size: 12px; color: var(--color-neutral-700); }
+
+/* ---------- полоски ---------- */
+.meter { display: block; height: 4px; background: var(--color-neutral-200); }
+.meter--thick { height: 6px; }
+.meter > span { display: block; height: 100%; }
