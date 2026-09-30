@@ -73,23 +73,23 @@ const chevron = 'm6 9 6 6 6-6'
       <button class="reset" :disabled="loading" @click="resetFilters">Сбросить</button>
     </div>
 
-    <!-- Кнопка сбора: запрос идёт только по ней, а не при каждом выборе -->
+    <!-- Кнопка сбора: запрос идёт только по ней. Пока данные не совпадают
+         с выбором (dirty) — показываем «Собрать», иначе «Обновить». -->
     <div class="build-bar">
       <button
         class="build" type="button"
-        :class="{ 'build--dirty': dirty || !hasData }"
+        :class="{ 'build--dirty': dirty }"
         :disabled="loading"
-        @click="(dirty || !hasData) ? build() : reload()"
+        @click="dirty ? build() : reload()"
       >
         <span v-if="loading">Собираем статистику…</span>
-        <span v-else-if="dirty || !hasData">Собрать статистику</span>
+        <span v-else-if="dirty">Собрать статистику</span>
         <span v-else>Обновить данные</span>
       </button>
-      <span v-if="hasData && dirty && !loading" class="build-note">Параметры изменились — соберите заново</span>
     </div>
 
-    <!-- Данные собраны: вкладки + контент -->
-    <template v-if="hasData">
+    <!-- Дашборд показываем ТОЛЬКО когда данные соответствуют текущему выбору -->
+    <template v-if="hasData && !dirty">
       <div class="tabs">
         <button
           v-for="t in tabs" :key="t.k"
@@ -108,7 +108,7 @@ const chevron = 'm6 9 6 6 6-6'
         <ShopTab v-else-if="state.tab === 'shop'" :shop="shop" @open="openDetail" />
         <ButtonsTab v-else-if="state.tab === 'btn'" :btn="btn" @open="openDetail" />
 
-        <!-- Оверлей пересборки поверх уже показанных данных -->
+        <!-- Оверлей при принудительном обновлении текущего набора -->
         <div v-if="loading" class="state-overlay">
           <span class="spinner" aria-hidden="true" />
           <span class="state-title">Собираем статистику…</span>
@@ -117,7 +117,7 @@ const chevron = 'm6 9 6 6 6-6'
       </div>
     </template>
 
-    <!-- Данных ещё нет: подсказка / загрузка / ошибка -->
+    <!-- Иначе (параметры изменены или ещё не собирали): загрузка / ошибка / подсказка -->
     <div v-else class="content">
       <div v-if="loading" class="state-overlay">
         <span class="spinner" aria-hidden="true" />
@@ -130,8 +130,8 @@ const chevron = 'm6 9 6 6 6-6'
         <button class="retry" type="button" @click="build">Повторить</button>
       </div>
       <div v-else class="state-overlay">
-        <span class="state-title">Готовы собрать статистику</span>
-        <span class="state-sub">Выберите бота, период и фильтры выше, затем нажмите «Собрать статистику».</span>
+        <span class="state-title">{{ hasData ? 'Параметры изменились' : 'Готовы собрать статистику' }}</span>
+        <span class="state-sub">Нажмите «Собрать статистику», чтобы показать данные по текущему выбору.</span>
       </div>
     </div>
 
