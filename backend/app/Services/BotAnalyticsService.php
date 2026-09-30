@@ -14,6 +14,9 @@ use Illuminate\Database\Query\Builder;
  * считает метрики за период (time) с учётом фильтров по контрагенту
  * (partners) и ссылке (links).
  *
+ * Оптимизация: по каждой тяжёлой таблице делается один проход
+ * (группировка / условные SUM), а не десяток отдельных COUNT-запросов.
+ *
  * Соответствие time -> период:
  *   1  — сутки (разбивка по часам, с 00:00 по МСК до текущего часа)
  *   7  — неделя (разбивка по дням)
@@ -69,11 +72,9 @@ class BotAnalyticsService
         $this->to = $now->copy();
 
         if ($this->time === 1) {
-            // Сутки: с 00:00 до текущего момента, по часам.
             $this->granularity = 'hour';
             $this->from = $now->copy()->startOfDay();
         } elseif ($this->time === 0) {
-            // Всё время: от самой ранней записи до сейчас, равными интервалами.
             $this->granularity = 'all';
             $earliest = $this->db->table('users')->min('created_at');
             $this->from = $earliest
@@ -83,7 +84,6 @@ class BotAnalyticsService
             $seconds = max(1, $this->to->getTimestamp() - $this->from->getTimestamp());
             $this->bucketWidth = (int) ceil($seconds / self::ALL_TIME_BUCKETS);
         } else {
-            // Неделя / месяц / произвольное число дней — по дням.
             $this->granularity = 'day';
             $this->from = $now->copy()->startOfDay()->subDays($this->time - 1);
         }
@@ -110,18 +110,12 @@ class BotAnalyticsService
         if ($this->granularity === 'hour') {
             $lastHour = (int) $this->to->format('G');
             for ($h = 0; $h <= $lastHour; $h++) {
-                $buckets[] = [
-                    'key'   => $h,
-                    'label' => sprintf('%02d:00', $h),
-                ];
+                $buckets[] = ['key' => $h, 'label' => sprintf('%02d:00', $h)];
             }
         } elseif ($this->granularity === 'day') {
             $cursor = $this->from->copy();
             while ($cursor->lessThanOrEqualTo($this->to)) {
-                $buckets[] = [
-                    'key'   => $cursor->format('Y-m-d'),
-                    'label' => $cursor->format('Y-m-d'),
-                ];
+                $buckets[] = ['key' => $cursor->format('Y-m-d'), 'label' => $cursor->format('Y-m-d')];
                 $cursor->addDay();
             }
         } else { // all
@@ -130,10 +124,7 @@ class BotAnalyticsService
                 if ($start->greaterThan($this->to)) {
                     break;
                 }
-                $buckets[] = [
-                    'key'   => $i,
-                    'label' => $start->format('Y-m-d H:i'),
-                ];
+                $buckets[] = ['key' => $i, 'label' => $start->format('Y-m-d H:i')];
             }
         }
 
@@ -141,14 +132,11 @@ class BotAnalyticsService
     }
 
     /**
-     * Временной ряд количества по таблице.
+     * Временной ряд количества по таблице (один группирующий запрос).
      *
-     * @param string $table       Таблица (users | query_logs | ...).
-     * @param string $dateColumn  Колонка с датой.
-     * @param bool   $distinctUser Считать COUNT(DISTINCT user_id) вместо COUNT(*).
-     * @return array{total:int, series:array<int,array{label:string,count:int}>}
+     * @return array<int,array{label:string,count:int}>
      */
-    private function timeSeries(string $table, string $dateColumn, bool $distinctUser): array
+    private function seriesFor(string $table, string $dateColumn, bool $distinctUser): array
     {
         $countExpr = $distinctUser ? 'COUNT(DISTINCT user_id)' : 'COUNT(*)';
 
@@ -157,43 +145,22 @@ class BotAnalyticsService
         $this->applyUserFilter($query, $table === 'users');
 
         if ($this->granularity === 'hour') {
-            $rows = (clone $query)
-                ->selectRaw("HOUR($dateColumn) as k, $countExpr as c")
-                ->groupBy('k')
-                ->pluck('c', 'k');
+            $rows = $query->selectRaw("HOUR($dateColumn) as k, $countExpr as c")->groupBy('k')->pluck('c', 'k');
         } elseif ($this->granularity === 'day') {
-            $rows = (clone $query)
-                ->selectRaw("DATE($dateColumn) as k, $countExpr as c")
-                ->groupBy('k')
-                ->pluck('c', 'k');
+            $rows = $query->selectRaw("DATE($dateColumn) as k, $countExpr as c")->groupBy('k')->pluck('c', 'k');
         } else { // all
-            $rows = (clone $query)
-                ->selectRaw(
-                    "FLOOR(TIMESTAMPDIFF(SECOND, ?, $dateColumn) / ?) as k, $countExpr as c",
-                    [$this->fromStr(), $this->bucketWidth]
-                )
-                ->groupBy('k')
-                ->pluck('c', 'k');
+            $rows = $query->selectRaw(
+                "FLOOR(TIMESTAMPDIFF(SECOND, ?, $dateColumn) / ?) as k, $countExpr as c",
+                [$this->fromStr(), $this->bucketWidth]
+            )->groupBy('k')->pluck('c', 'k');
         }
 
         $series = [];
         foreach ($this->buckets() as $bucket) {
-            $series[] = [
-                'label' => $bucket['label'],
-                'count' => (int) ($rows[$bucket['key']] ?? 0),
-            ];
+            $series[] = ['label' => $bucket['label'], 'count' => (int) ($rows[$bucket['key']] ?? 0)];
         }
 
-        // total считаем отдельно: для distinct — уникальные за весь период,
-        // а не сумма по бакетам (иначе один юзер посчитается несколько раз).
-        $totalQuery = $this->db->table($table)
-            ->whereBetween($dateColumn, [$this->fromStr(), $this->toStr()]);
-        $this->applyUserFilter($totalQuery, $table === 'users');
-        $total = $distinctUser
-            ? (int) $totalQuery->distinct()->count('user_id')
-            : (int) $totalQuery->count();
-
-        return ['total' => $total, 'series' => $series];
+        return $series;
     }
 
     // ------------------------------------------------------------------
@@ -206,7 +173,6 @@ class BotAnalyticsService
 
         if ($link !== null) {
             $name = $this->db->table('links')->where('id', $link)->value('name');
-            // Если ссылка не найдена — пустой набор (никто не подойдёт).
             $sets[] = $name !== null ? [(string) $name] : [];
         }
 
@@ -219,7 +185,6 @@ class BotAnalyticsService
             return;
         }
 
-        // Если заданы оба фильтра — берём пересечение.
         $names = array_shift($sets);
         foreach ($sets as $set) {
             $names = array_values(array_intersect($names, $set));
@@ -244,7 +209,6 @@ class BotAnalyticsService
             return [];
         }
 
-        // Если элементы числовые — это id ссылок, резолвим в имена.
         $allNumeric = collect($decoded)->every(fn ($v) => is_int($v) || ctype_digit((string) $v));
         if ($allNumeric) {
             return $this->db->table('links')
@@ -260,7 +224,6 @@ class BotAnalyticsService
     /**
      * Применяет фильтр по ссылке к запросу.
      *
-     * @param Builder $query
      * @param bool $isUsersTable true — фильтр по колонке link, иначе по user_id.
      */
     private function applyUserFilter(Builder $query, bool $isUsersTable): void
@@ -270,7 +233,6 @@ class BotAnalyticsService
         }
 
         if (empty($this->linkNames)) {
-            // Фильтр задан, но подходящих ссылок нет — выборка пустая.
             $query->whereRaw('1 = 0');
             return;
         }
@@ -291,6 +253,14 @@ class BotAnalyticsService
 
     public function collect(): array
     {
+        // Активные пользователи считаются один раз и переиспользуются
+        // (нужны и в блоке users, и в монетизации).
+        $activeTotal = $this->activeTotal();
+        $active = [
+            'total'  => $activeTotal,
+            'series' => $this->seriesFor('query_logs', 'created_at', true),
+        ];
+
         return [
             'period'       => [
                 'time'        => $this->time,
@@ -298,9 +268,9 @@ class BotAnalyticsService
                 'to'          => $this->to->toIso8601String(),
                 'granularity' => $this->granularity,
             ],
-            'users'        => $this->users(),
+            'users'        => $this->users($active),
             'queries'      => $this->queries(),
-            'monetization' => $this->monetization(),
+            'monetization' => $this->monetization($activeTotal),
             'buttons'      => $this->buttons(),
         ];
     }
@@ -309,98 +279,142 @@ class BotAnalyticsService
     // Пользователи
     // ------------------------------------------------------------------
 
-    private function users(): array
+    private function users(array $active): array
     {
-        $active = $this->timeSeries('query_logs', 'created_at', true);
-        $new    = $this->timeSeries('users', 'created_at', false);
-        $newTotal = $new['total'];
+        $newSeries = $this->seriesFor('users', 'created_at', false);
+        $agg = $this->newUsersAggregates();
+        $newTotal = $agg['new_total'];
+
+        $withPct = fn (int $c) => ['count' => $c, 'percent' => $this->pct($c, $newTotal)];
 
         return [
             'active'              => $active,
-            'new'                 => $new,
-            'new_premium'         => $this->countWithPercent($this->newUsersQuery()->where('is_premium', 1), $newTotal),
-            'subscribed_op'       => $this->subscribedOp($newTotal),
-            'from_referral_links' => $this->countWithPercent(
-                $this->newUsersQuery()->whereNotNull('link')->where('link', '<>', ''),
-                $newTotal
-            ),
-            'from_other_users'    => $this->countWithPercent(
-                $this->newUsersQuery()->where('referal_user_from', '<>', 0),
-                $newTotal
-            ),
+            'new'                 => ['total' => $newTotal, 'series' => $newSeries],
+            'new_premium'         => $withPct($agg['premium']),
+            'subscribed_op'       => $withPct($agg['op']),
+            'from_referral_links' => $withPct($agg['from_links']),
+            'from_other_users'    => $withPct($agg['from_users']),
         ];
     }
 
-    /** Базовый запрос по новым пользователям за период (с фильтром). */
-    private function newUsersQuery(): Builder
-    {
-        $q = $this->db->table('users')
-            ->whereBetween('created_at', [$this->fromStr(), $this->toStr()]);
-        $this->applyUserFilter($q, true);
-        return $q;
-    }
-
     /**
-     * Подписались на ОП.
+     * Все агрегаты по новым пользователям за период — одним запросом.
      *
-     * В таблице op нет привязки к пользователю (это конфиг каналов ОП),
-     * поэтому считаем: новые пользователи, которые НЕ пропустили ОП, —
-     * т.е. без ссылки со skip_op = 1. links.skip_op = 1 означает,
-     * что пользователи по этой ссылке пропускают обязательную подписку.
+     * «Подписались на ОП»: в таблице op нет привязки к пользователю
+     * (это конфиг каналов), поэтому считаем новых, которые НЕ пропустили ОП —
+     * т.е. без ссылки со skip_op = 1. Легко заменить на реальный признак,
+     * если он появится в users.
      *
-     * ДОПУЩЕНИЕ — при необходимости легко заменить на реальный признак,
-     * если в users появится поле факта подписки на ОП.
+     * @return array{new_total:int, premium:int, from_users:int, from_links:int, op:int}
      */
-    private function subscribedOp(int $newTotal): array
+    private function newUsersAggregates(): array
     {
-        $skipLinkNames = $this->db->table('links')
-            ->where('skip_op', 1)
-            ->pluck('name')
-            ->map(fn ($n) => (string) $n)
-            ->all();
+        // Ссылки, пропускающие ОП.
+        $skip = $this->db->table('links')->where('skip_op', 1)->pluck('name')->map(fn ($n) => (string) $n)->all();
 
-        $q = $this->newUsersQuery();
-        if (!empty($skipLinkNames)) {
-            $q->where(function ($w) use ($skipLinkNames) {
-                $w->whereNull('link')->orWhereNotIn('link', $skipLinkNames);
-            });
+        if (empty($skip)) {
+            $opExpr = '1';
+            $opBind = [];
+        } else {
+            $ph = implode(',', array_fill(0, count($skip), '?'));
+            $opExpr = "(link IS NULL OR link NOT IN ($ph))";
+            $opBind = $skip;
         }
 
-        return $this->countWithPercent($q, $newTotal);
+        $q = $this->db->table('users')->whereBetween('created_at', [$this->fromStr(), $this->toStr()]);
+        $this->applyUserFilter($q, true);
+
+        $row = $q->selectRaw(
+            "COUNT(*) AS new_total,
+             SUM(is_premium = 1) AS premium,
+             SUM(referal_user_from <> 0) AS from_users,
+             SUM(link IS NOT NULL AND link <> '') AS from_links,
+             SUM($opExpr) AS op_cnt",
+            $opBind
+        )->first();
+
+        return [
+            'new_total'  => (int) ($row->new_total ?? 0),
+            'premium'    => (int) ($row->premium ?? 0),
+            'from_users' => (int) ($row->from_users ?? 0),
+            'from_links' => (int) ($row->from_links ?? 0),
+            'op'         => (int) ($row->op_cnt ?? 0),
+        ];
     }
 
     // ------------------------------------------------------------------
     // Запросы к нейросети
     // ------------------------------------------------------------------
 
+    /**
+     * Всё по query_logs — одним группирующим запросом (type, model).
+     * В PHP раскладываем на категории text / image / redirect,
+     * считаем общий итог, разбивку по типам и топ моделей.
+     */
     private function queries(): array
     {
-        $base = fn () => $this->applyToQueryLogs();
+        $rows = $this->queryLogsBase()
+            ->selectRaw('type, model, COUNT(*) AS c')
+            ->groupBy('type', 'model')
+            ->get();
 
-        $total = (int) $base()->count();
+        $total = 0;
+        $byType = ['text' => 0, 'image' => 0, 'redirect' => 0];
+        $models = ['text' => [], 'image' => [], 'redirect' => []];
 
-        // Категории по query_logs.type: text | image | redirect_text | redirect_image.
-        $text     = (int) $base()->where('type', 'text')->count();
-        $image    = (int) $base()->where('type', 'image')->count();
-        $redirect = (int) $base()->where('type', 'like', 'redirect\_%')->count();
+        foreach ($rows as $r) {
+            $c = (int) $r->c;
+            $total += $c;
+            $cat = $this->queryCategory((string) $r->type);
+            if ($cat === null) {
+                continue;
+            }
+            $byType[$cat] += $c;
+            $model = (string) $r->model;
+            $models[$cat][$model] = ($models[$cat][$model] ?? 0) + $c;
+        }
+
+        $top = function (array $m) use ($total) {
+            arsort($m);
+            $out = [];
+            foreach (array_slice($m, 0, self::TOP_LIMIT, true) as $model => $c) {
+                $out[] = ['model' => $model, 'count' => $c, 'percent' => $this->pct($c, $total)];
+            }
+            return $out;
+        };
 
         return [
             'total'   => $total,
             'by_type' => [
-                'text'     => ['count' => $text,     'percent' => $this->pct($text, $total)],
-                'image'    => ['count' => $image,    'percent' => $this->pct($image, $total)],
-                'redirect' => ['count' => $redirect, 'percent' => $this->pct($redirect, $total)],
+                'text'     => ['count' => $byType['text'],     'percent' => $this->pct($byType['text'], $total)],
+                'image'    => ['count' => $byType['image'],    'percent' => $this->pct($byType['image'], $total)],
+                'redirect' => ['count' => $byType['redirect'], 'percent' => $this->pct($byType['redirect'], $total)],
             ],
             'top_models' => [
-                'text'     => $this->topModels(fn ($q) => $q->where('type', 'text'), $total),
-                'image'    => $this->topModels(fn ($q) => $q->where('type', 'image'), $total),
-                'redirect' => $this->topModels(fn ($q) => $q->where('type', 'like', 'redirect\_%'), $total),
+                'text'     => $top($models['text']),
+                'image'    => $top($models['image']),
+                'redirect' => $top($models['redirect']),
             ],
         ];
     }
 
+    /** Категория запроса по query_logs.type: text | image | redirect | null. */
+    private function queryCategory(string $type): ?string
+    {
+        if ($type === 'text') {
+            return 'text';
+        }
+        if ($type === 'image') {
+            return 'image';
+        }
+        if (str_starts_with($type, 'redirect')) {
+            return 'redirect';
+        }
+        return null;
+    }
+
     /** Базовый запрос по query_logs за период (с фильтром). */
-    private function applyToQueryLogs(): Builder
+    private function queryLogsBase(): Builder
     {
         $q = $this->db->table('query_logs')
             ->whereBetween('created_at', [$this->fromStr(), $this->toStr()]);
@@ -408,53 +422,35 @@ class BotAnalyticsService
         return $q;
     }
 
-    /**
-     * Топ моделей внутри категории.
-     *
-     * @param callable(Builder):Builder $scope Дополнительное условие категории.
-     * @param int $totalQueries Общее число запросов (для процента).
-     */
-    private function topModels(callable $scope, int $totalQueries): array
+    private function activeTotal(): int
     {
-        $q = $this->applyToQueryLogs();
-        $scope($q);
-
-        return $q->selectRaw('model, COUNT(*) as c')
-            ->groupBy('model')
-            ->orderByDesc('c')
-            ->limit(self::TOP_LIMIT)
-            ->get()
-            ->map(fn ($row) => [
-                'model'   => $row->model,
-                'count'   => (int) $row->c,
-                'percent' => $this->pct((int) $row->c, $totalQueries),
-            ])
-            ->all();
+        return (int) $this->queryLogsBase()->distinct()->count('user_id');
     }
 
     // ------------------------------------------------------------------
     // Монетизация
     // ------------------------------------------------------------------
 
-    private function monetization(): array
+    private function monetization(int $activeTotal): array
     {
-        // Все покупки за период (is_bought = 1).
-        $purchases      = (int) $this->purchasesQuery()->count();
-        $revenueTotal   = (float) $this->purchasesQuery()->sum('rub_summ');
+        // Покупки, доход, пробные и PRO — одним запросом.
+        $row = $this->purchasesQuery()->selectRaw(
+            'COUNT(*) AS purchases,
+             COALESCE(SUM(rub_summ), 0) AS revenue,
+             SUM(summ = 1) AS trial,
+             SUM(summ <> 1) AS pro'
+        )->first();
 
-        // Пробная подписка: summ = 1, иначе — платная PRO.
-        $trialCount     = (int) $this->purchasesQuery()->where('summ', 1)->count();
-        $proCount       = (int) $this->purchasesQuery()->where('summ', '<>', 1)->count();
-
-        $activeTotal    = (int) $this->activeUsersCount();
+        $purchases  = (int) ($row->purchases ?? 0);
+        $revenue    = (float) ($row->revenue ?? 0);
+        $trialCount = (int) ($row->trial ?? 0);
+        $proCount   = (int) ($row->pro ?? 0);
 
         return [
             'purchases'          => $purchases,
-            'revenue_total'      => round($revenueTotal, 2),
-            // Средний чек на одну покупку.
-            'avg_check'          => $purchases > 0 ? round($revenueTotal / $purchases, 2) : 0.0,
-            // "Доход со старта" = доход за период / активные пользователи за период.
-            'revenue_per_active' => $activeTotal > 0 ? round($revenueTotal / $activeTotal, 2) : 0.0,
+            'revenue_total'      => round($revenue, 2),
+            'avg_check'          => $purchases > 0 ? round($revenue / $purchases, 2) : 0.0,
+            'revenue_per_active' => $activeTotal > 0 ? round($revenue / $activeTotal, 2) : 0.0,
             'trial_subs'         => ['count' => $trialCount, 'percent' => $this->pct($trialCount, $purchases)],
             'pro_subs'           => ['count' => $proCount,   'percent' => $this->pct($proCount, $purchases)],
             'trial_to_pro'       => $this->trialToPro(),
@@ -472,24 +468,12 @@ class BotAnalyticsService
         return $q;
     }
 
-    private function activeUsersCount(): int
-    {
-        $q = $this->db->table('query_logs')
-            ->whereBetween('created_at', [$this->fromStr(), $this->toStr()]);
-        $this->applyUserFilter($q, false);
-        return (int) $q->distinct()->count('user_id');
-    }
-
     /**
      * Продлившие пробную подписку на платную PRO.
-     *
-     * Считаем пользователей, у кого за период была пробная покупка (summ = 1)
-     * и есть платная PRO-покупка (summ <> 1, is_bought = 1).
      * Процент — от числа уникальных пользователей с пробной за период.
      */
     private function trialToPro(): array
     {
-        // Пользователи с пробной покупкой за период.
         $trialUsersQuery = $this->db->table('payments')
             ->where('is_bought', 1)
             ->where('summ', 1)
@@ -502,7 +486,6 @@ class BotAnalyticsService
             return ['count' => 0, 'percent' => 0.0];
         }
 
-        // Из них — кто затем оплатил платную PRO.
         $converted = (int) $this->db->table('payments')
             ->where('is_bought', 1)
             ->where('summ', '<>', 1)
@@ -510,23 +493,17 @@ class BotAnalyticsService
             ->distinct()
             ->count('user_id');
 
-        return [
-            'count'   => $converted,
-            'percent' => $this->pct($converted, $trialUsersCount),
-        ];
+        return ['count' => $converted, 'percent' => $this->pct($converted, $trialUsersCount)];
     }
 
     /**
-     * Топ товаров.
-     *
-     * sub всегда = pro; товар различается по типу (пробная / платная) и
-     * длительности/цене. Группируем по (пробная?, days, rub_summ).
+     * Топ товаров. sub всегда = pro; товар различается типом
+     * (пробная / платная) и длительностью/ценой.
      */
     private function topProducts(): array
     {
-        $q = $this->purchasesQuery();
-
-        return $q->selectRaw('
+        return $this->purchasesQuery()
+            ->selectRaw('
                 CASE WHEN summ = 1 THEN 1 ELSE 0 END as is_trial,
                 days,
                 rub_summ,
@@ -539,12 +516,8 @@ class BotAnalyticsService
             ->get()
             ->map(function ($row) {
                 $isTrial = (int) $row->is_trial === 1;
-                $name = $isTrial
-                    ? 'PRO (пробная)'
-                    : 'PRO ' . (int) $row->days . ' дн.';
-
                 return [
-                    'name'    => $name,
+                    'name'    => $isTrial ? 'PRO (пробная)' : 'PRO ' . (int) $row->days . ' дн.',
                     'price'   => round((float) $row->rub_summ, 2),
                     'sold'    => (int) $row->sold,
                     'revenue' => round((float) $row->revenue, 2),
@@ -559,26 +532,12 @@ class BotAnalyticsService
 
     private function buttons(): array
     {
-        return [
-            'total' => null,
-            'top'   => null,
-        ];
+        return ['total' => null, 'top' => null];
     }
 
     // ------------------------------------------------------------------
     // Утилиты
     // ------------------------------------------------------------------
-
-    /**
-     * @param Builder $query
-     * @param int $whole База для процента.
-     * @return array{count:int, percent:float}
-     */
-    private function countWithPercent(Builder $query, int $whole): array
-    {
-        $count = (int) $query->count();
-        return ['count' => $count, 'percent' => $this->pct($count, $whole)];
-    }
 
     private function pct(int $part, int $whole): float
     {
