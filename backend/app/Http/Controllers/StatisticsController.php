@@ -8,27 +8,43 @@ use App\Services\BotAnalyticsService;
 use App\Services\BotDatabase;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class StatisticsController extends Controller
 {
+    /** Список ботов / фильтры меняются редко — кэшируем на 10 минут. */
+    private const LISTS_TTL = 600;
+
     /**
      * Статистика по боту за период с учётом фильтров.
-     * GET /api/statistics?time=&bot=&contragent=&link=
+     * GET /api/statistics?time=&bot=&contragent=&link=[&refresh=1]
+     *
+     * Ответ кэшируется по ключу (bot, time, contragent, link).
+     * TTL зависит от периода: сутки обновляются чаще, «всё время» — реже.
+     * ?refresh=1 — пересчитать принудительно (сбросить кэш).
      */
     public function get(StatisticsGetRequest $request): JsonResponse
     {
         $data = $request->validated();
 
-        $bot = Bots::findOrFail($data['bot']);
+        $bot        = (int) $data['bot'];
+        $time       = (int) $data['time'];
+        $contragent = isset($data['contragent']) ? (int) $data['contragent'] : null;
+        $link       = isset($data['link']) ? (int) $data['link'] : null;
 
-        $service = new BotAnalyticsService(
-            $bot,
-            (int) $data['time'],
-            isset($data['contragent']) ? (int) $data['contragent'] : null,
-            isset($data['link']) ? (int) $data['link'] : null,
-        );
+        $key = sprintf('stats:%d:%d:%s:%s', $bot, $time, $contragent ?? 'all', $link ?? 'all');
+        $ttl = $this->statsTtl($time);
 
-        return response()->json($service->collect());
+        if ($request->boolean('refresh')) {
+            Cache::forget($key);
+        }
+
+        $payload = Cache::remember($key, $ttl, function () use ($bot, $time, $contragent, $link) {
+            $model = Bots::findOrFail($bot);
+            return (new BotAnalyticsService($model, $time, $contragent, $link))->collect();
+        });
+
+        return response()->json($payload);
     }
 
     /**
@@ -37,14 +53,17 @@ class StatisticsController extends Controller
      */
     public function bots(): JsonResponse
     {
-        $bots = Bots::query()
-            ->orderBy('name')
-            ->get(['id', 'name'])
-            ->map(fn (Bots $bot) => [
-                'id'       => $bot->id,
-                'name'     => $bot->name,
-                'platform' => $this->platform($bot->name),
-            ]);
+        $bots = Cache::remember('stats:bots', self::LISTS_TTL, function () {
+            return Bots::query()
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (Bots $bot) => [
+                    'id'       => $bot->id,
+                    'name'     => $bot->name,
+                    'platform' => $this->platform($bot->name),
+                ])
+                ->all();
+        });
 
         return response()->json($bots);
     }
@@ -59,41 +78,60 @@ class StatisticsController extends Controller
             'bot' => 'required|integer|exists:bots,id',
         ]);
 
-        $bot = Bots::findOrFail($request->integer('bot'));
-        $db = BotDatabase::connect($bot);
+        $botId = $request->integer('bot');
 
-        $partners = $db->table('partners')->get(['id', 'name', 'links']);
+        $payload = Cache::remember('stats:filters:' . $botId, self::LISTS_TTL, function () use ($botId) {
+            $bot = Bots::findOrFail($botId);
+            $db = BotDatabase::connect($bot);
 
-        // Карта link_id -> partner_id (partners.links — JSON-массив id ссылок).
-        $linkToPartner = [];
-        foreach ($partners as $partner) {
-            $ids = is_array($partner->links) ? $partner->links : json_decode((string) $partner->links, true);
-            if (!is_array($ids)) {
-                continue;
+            $partners = $db->table('partners')->get(['id', 'name', 'links']);
+
+            // Карта link_id -> partner_id (partners.links — JSON-массив id ссылок).
+            $linkToPartner = [];
+            foreach ($partners as $partner) {
+                $ids = is_array($partner->links) ? $partner->links : json_decode((string) $partner->links, true);
+                if (!is_array($ids)) {
+                    continue;
+                }
+                foreach ($ids as $linkId) {
+                    $linkToPartner[(int) $linkId] = (int) $partner->id;
+                }
             }
-            foreach ($ids as $linkId) {
-                $linkToPartner[(int) $linkId] = (int) $partner->id;
-            }
-        }
 
-        $links = $db->table('links')
-            ->orderBy('id')
-            ->get(['id', 'name'])
-            ->map(fn ($link) => [
-                'id'         => (int) $link->id,
-                'name'       => (string) $link->name,
-                'contragent' => $linkToPartner[(int) $link->id] ?? null,
-            ]);
+            $links = $db->table('links')
+                ->orderBy('id')
+                ->get(['id', 'name'])
+                ->map(fn ($link) => [
+                    'id'         => (int) $link->id,
+                    'name'       => (string) $link->name,
+                    'contragent' => $linkToPartner[(int) $link->id] ?? null,
+                ])
+                ->all();
 
-        $contragents = $partners->map(fn ($p) => [
-            'id'   => (int) $p->id,
-            'name' => (string) ($p->name ?? ('Партнёр #' . $p->id)),
-        ])->values();
+            $contragents = $partners->map(fn ($p) => [
+                'id'   => (int) $p->id,
+                'name' => (string) ($p->name ?? ('Партнёр #' . $p->id)),
+            ])->values()->all();
 
-        return response()->json([
-            'contragents' => $contragents,
-            'links'       => $links,
-        ]);
+            return ['contragents' => $contragents, 'links' => $links];
+        });
+
+        return response()->json($payload);
+    }
+
+    /**
+     * TTL кэша статистики в секундах по периоду.
+     *   time = 1  (сутки)      — 5 минут (данные текущего часа меняются часто)
+     *   time = 0  (всё время)  — 60 минут
+     *   иначе (7/30/N дней)    — 30 минут
+     */
+    private function statsTtl(int $time): int
+    {
+        return match ($time) {
+            1       => 300,
+            0       => 3600,
+            default => 1800,
+        };
     }
 
     /**

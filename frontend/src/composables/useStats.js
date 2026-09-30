@@ -48,6 +48,11 @@ export function useStats(props) {
 
   // ---------- загрузка ----------
 
+  // Клиентский кэш уже загруженных комбинаций (бот|период|контрагент|ссылка),
+  // чтобы переключение назад показывало данные мгновенно, без нового запроса.
+  const cacheStore = new Map()
+  const cacheKey = () => `${state.bot}|${state.period}|${state.cp}|${state.link}`
+
   let statToken = 0
 
   async function loadBots() {
@@ -69,8 +74,20 @@ export function useStats(props) {
     if (state.link !== 'all' && !links.value.some((l) => l.id === state.link)) state.link = 'all'
   }
 
-  async function loadStats() {
+  async function loadStats(force = false) {
     if (!state.bot) return
+    const key = cacheKey()
+
+    // Есть в кэше и не форсим обновление — отдаём мгновенно.
+    if (!force && cacheStore.has(key)) {
+      const hit = cacheStore.get(key)
+      data.value = hit.data
+      updatedAt.value = hit.at
+      loading.value = false
+      error.value = ''
+      return
+    }
+
     const my = ++statToken
     loading.value = true
     error.value = ''
@@ -81,16 +98,21 @@ export function useStats(props) {
         bot: state.bot,
         contragent: state.cp,
         link: state.link,
+        refresh: force ? 1 : undefined, // сброс серверного кэша при принудительном обновлении
       })
       if (my !== statToken) return // пришёл устаревший ответ — игнорируем
       data.value = res
       updatedAt.value = new Date()
+      cacheStore.set(key, { data: res, at: updatedAt.value })
     } catch (e) {
       if (my === statToken) error.value = e.message || 'Ошибка загрузки'
     } finally {
       if (my === statToken) loading.value = false
     }
   }
+
+  // Принудительное обновление текущей выборки (мимо кэша фронта и сервера).
+  const reload = () => loadStats(true)
 
   onMounted(async () => {
     try {
@@ -338,7 +360,7 @@ export function useStats(props) {
   return {
     state,
     period, periods, tabs, gen, ai, shop, btn, filters, sheet,
-    botPlatform, botLabel, status, loading, error,
+    botPlatform, botLabel, status, loading, error, reload,
     setPeriod, setTab, openSheet, openDetail, closeSheet, resetFilters, pickOption,
   }
 }

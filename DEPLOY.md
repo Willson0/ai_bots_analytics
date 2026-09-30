@@ -149,6 +149,10 @@ sudo nano /etc/nginx/sites-enabled/default
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # Статистика может считаться 1-2 минуты — поднимаем таймауты.
+        proxy_connect_timeout 75s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
     }
 ```
 

@@ -14,6 +14,7 @@ const props = defineProps({
 
 const {
   state, period, periods, tabs, gen, ai, shop, btn, filters, sheet, botPlatform, botLabel, status,
+  loading, error, reload,
   setPeriod, setTab, openSheet, openDetail, closeSheet, resetFilters, pickOption,
 } = useStats(props)
 
@@ -26,7 +27,10 @@ const chevron = 'm6 9 6 6 6-6'
     <div class="hero">
       <span class="hero-kicker">Панель администратора</span>
       <h1 class="hero-title">Статистика</h1>
-      <span class="muted">{{ status }}</span>
+      <span class="status-line muted">
+        <span class="ellipsis">{{ status }}</span>
+        <button class="refresh" type="button" :disabled="loading" title="Обновить данные" @click="reload">↻</button>
+      </span>
     </div>
 
     <button class="bot-picker" @click="openSheet('bot')">
@@ -76,14 +80,30 @@ const chevron = 'm6 9 6 6 6-6'
       >{{ t.label }}</button>
     </div>
 
-    <GeneralTab
-      v-if="state.tab === 'gen'"
-      :gen="gen" :show-charts="props.showCharts" :axis-from="period.from" :axis-to="period.to"
-      @open="openDetail"
-    />
-    <AiTab v-else-if="state.tab === 'ai'" :ai="ai" @open="openDetail" />
-    <ShopTab v-else-if="state.tab === 'shop'" :shop="shop" @open="openDetail" />
-    <ButtonsTab v-else-if="state.tab === 'btn'" :btn="btn" @open="openDetail" />
+    <div class="content">
+      <GeneralTab
+        v-if="state.tab === 'gen'"
+        :gen="gen" :show-charts="props.showCharts" :axis-from="period.from" :axis-to="period.to"
+        @open="openDetail"
+      />
+      <AiTab v-else-if="state.tab === 'ai'" :ai="ai" @open="openDetail" />
+      <ShopTab v-else-if="state.tab === 'shop'" :shop="shop" @open="openDetail" />
+      <ButtonsTab v-else-if="state.tab === 'btn'" :btn="btn" @open="openDetail" />
+
+      <!-- Экран загрузки поверх контента (первый расчёт долгий) -->
+      <div v-if="loading" class="state-overlay">
+        <span class="spinner" aria-hidden="true" />
+        <span class="state-title">Собираем статистику…</span>
+        <span class="state-sub">Первый расчёт может занять до 1–2 минут. Дальше данные кэшируются и открываются мгновенно.</span>
+      </div>
+
+      <!-- Ошибка загрузки -->
+      <div v-else-if="error" class="state-overlay">
+        <span class="state-title">Не удалось загрузить</span>
+        <span class="state-sub">{{ error }}</span>
+        <button class="retry" type="button" @click="reload">Повторить</button>
+      </div>
+    </div>
 
     <BottomSheet
       v-if="state.sheet"
@@ -154,4 +174,35 @@ const chevron = 'm6 9 6 6 6-6'
   font-size: 13px; font-weight: 800; border-bottom: 3px solid transparent; color: var(--color-neutral-600);
 }
 .tab--on { border-bottom-color: var(--color-accent); color: var(--color-text); }
+
+/* статус + кнопка обновления */
+.status-line { display: flex; align-items: center; gap: 8px; }
+.refresh {
+  border: 0; background: transparent; cursor: pointer; color: var(--color-accent-700);
+  font-size: 16px; line-height: 1; padding: 2px 4px;
+}
+.refresh:disabled { opacity: .45; cursor: default; }
+
+/* контент с оверлеем загрузки/ошибки */
+.content { position: relative; min-height: 340px; }
+.state-overlay {
+  position: absolute; inset: 0; z-index: 4;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 32px 24px; text-align: center;
+  background: color-mix(in srgb, var(--color-bg) 86%, transparent);
+}
+.state-title { font-family: var(--font-heading); font-weight: 800; font-size: 18px; }
+.state-sub { font-size: 13px; color: var(--color-neutral-700); max-width: 320px; line-height: 1.4; }
+.spinner {
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 3px solid var(--color-neutral-300); border-top-color: var(--color-accent);
+  animation: spin .8s linear infinite;
+}
+.retry {
+  margin-top: 4px; border: 2px solid var(--color-text); background: var(--color-text);
+  color: var(--color-bg); font-weight: 800; font-size: 13px; padding: 8px 16px; cursor: pointer;
+}
+.retry:hover { background: var(--color-neutral-900); }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 </style>
