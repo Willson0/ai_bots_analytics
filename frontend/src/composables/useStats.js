@@ -141,6 +141,22 @@ export function useStats(props) {
     }
   })
 
+  // При изменении любого параметра: если такая комбинация уже есть в кэше
+  // фронта — сразу показываем её (без кнопки «Собрать»). Если нет — данные
+  // остаются скрытыми (dirty), пользователь жмёт «Собрать статистику».
+  // Запрос на сервер тут НЕ отправляется.
+  watch(() => [state.bot, state.period, state.link, state.cp], () => {
+    if (loading.value) return
+    const key = cacheKey()
+    if (cacheStore.has(key)) {
+      const hit = cacheStore.get(key)
+      data.value = hit.data
+      updatedAt.value = hit.at
+      loadedKey.value = key
+      error.value = ''
+    }
+  })
+
   // Есть ли уже собранные данные и совпадают ли они с текущей выборкой.
   const hasData = computed(() => data.value !== null)
   const dirty = computed(() => cacheKey() !== loadedKey.value)
