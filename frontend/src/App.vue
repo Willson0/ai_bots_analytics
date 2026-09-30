@@ -14,7 +14,7 @@ const props = defineProps({
 
 const {
   state, period, periods, tabs, gen, ai, shop, btn, filters, sheet, botPlatform, botLabel, status,
-  loading, error, reload,
+  loading, error, reload, build, hasData, dirty,
   setPeriod, setTab, openSheet, openDetail, closeSheet, resetFilters, pickOption,
 } = useStats(props)
 
@@ -73,36 +73,65 @@ const chevron = 'm6 9 6 6 6-6'
       <button class="reset" :disabled="loading" @click="resetFilters">Сбросить</button>
     </div>
 
-    <div class="tabs">
+    <!-- Кнопка сбора: запрос идёт только по ней, а не при каждом выборе -->
+    <div class="build-bar">
       <button
-        v-for="t in tabs" :key="t.k"
-        class="tab" :class="{ 'tab--on': t.active }"
-        @click="setTab(t.k)"
-      >{{ t.label }}</button>
+        class="build" type="button"
+        :class="{ 'build--dirty': dirty || !hasData }"
+        :disabled="loading"
+        @click="(dirty || !hasData) ? build() : reload()"
+      >
+        <span v-if="loading">Собираем статистику…</span>
+        <span v-else-if="dirty || !hasData">Собрать статистику</span>
+        <span v-else>Обновить данные</span>
+      </button>
+      <span v-if="hasData && dirty && !loading" class="build-note">Параметры изменились — соберите заново</span>
     </div>
 
-    <div class="content">
-      <GeneralTab
-        v-if="state.tab === 'gen'"
-        :gen="gen" :show-charts="props.showCharts" :axis-from="period.from" :axis-to="period.to"
-        @open="openDetail"
-      />
-      <AiTab v-else-if="state.tab === 'ai'" :ai="ai" @open="openDetail" />
-      <ShopTab v-else-if="state.tab === 'shop'" :shop="shop" @open="openDetail" />
-      <ButtonsTab v-else-if="state.tab === 'btn'" :btn="btn" @open="openDetail" />
+    <!-- Данные собраны: вкладки + контент -->
+    <template v-if="hasData">
+      <div class="tabs">
+        <button
+          v-for="t in tabs" :key="t.k"
+          class="tab" :class="{ 'tab--on': t.active }"
+          @click="setTab(t.k)"
+        >{{ t.label }}</button>
+      </div>
 
-      <!-- Экран загрузки поверх контента (первый расчёт долгий) -->
+      <div class="content">
+        <GeneralTab
+          v-if="state.tab === 'gen'"
+          :gen="gen" :show-charts="props.showCharts" :axis-from="period.from" :axis-to="period.to"
+          @open="openDetail"
+        />
+        <AiTab v-else-if="state.tab === 'ai'" :ai="ai" @open="openDetail" />
+        <ShopTab v-else-if="state.tab === 'shop'" :shop="shop" @open="openDetail" />
+        <ButtonsTab v-else-if="state.tab === 'btn'" :btn="btn" @open="openDetail" />
+
+        <!-- Оверлей пересборки поверх уже показанных данных -->
+        <div v-if="loading" class="state-overlay">
+          <span class="spinner" aria-hidden="true" />
+          <span class="state-title">Собираем статистику…</span>
+          <span class="state-sub">Расчёт может занять до 1–2 минут.</span>
+        </div>
+      </div>
+    </template>
+
+    <!-- Данных ещё нет: подсказка / загрузка / ошибка -->
+    <div v-else class="content">
       <div v-if="loading" class="state-overlay">
         <span class="spinner" aria-hidden="true" />
         <span class="state-title">Собираем статистику…</span>
         <span class="state-sub">Первый расчёт может занять до 1–2 минут. Дальше данные кэшируются и открываются мгновенно.</span>
       </div>
-
-      <!-- Ошибка загрузки -->
       <div v-else-if="error" class="state-overlay">
         <span class="state-title">Не удалось загрузить</span>
         <span class="state-sub">{{ error }}</span>
-        <button class="retry" type="button" @click="reload">Повторить</button>
+        <button class="retry" type="button" @click="build">Повторить</button>
+      </div>
+      <div v-else class="state-overlay">
+        <span class="state-title">Готовы собрать статистику</span>
+        <span class="state-sub">Выберите бота, период и фильтры выше, затем нажмите «Собрать статистику».</span>
       </div>
     </div>
 
@@ -175,6 +204,22 @@ const chevron = 'm6 9 6 6 6-6'
   font-size: 13px; font-weight: 800; border-bottom: 3px solid transparent; color: var(--color-neutral-600);
 }
 .tab--on { border-bottom-color: var(--color-accent); color: var(--color-text); }
+
+/* кнопка «Собрать статистику» */
+.build-bar {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 14px 16px; border-bottom: 2px solid var(--color-divider);
+}
+.build {
+  width: 100%; border: 2px solid var(--color-text); background: var(--color-text); color: var(--color-bg);
+  font-weight: 800; font-size: 15px; padding: 14px 16px; cursor: pointer;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.build:hover { background: var(--color-neutral-900); }
+.build--dirty { border-color: var(--color-accent); background: var(--color-accent); }
+.build--dirty:hover { background: var(--color-accent-600); }
+.build:disabled { opacity: .55; cursor: default; }
+.build-note { font-size: 12px; color: var(--color-accent-700); font-weight: 600; }
 
 /* блокировка управления во время загрузки */
 .bot-picker:disabled, .period:disabled, .filter:disabled, .reset:disabled { opacity: .5; cursor: default; }

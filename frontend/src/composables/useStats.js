@@ -45,6 +45,8 @@ export function useStats(props) {
   const loading = ref(false)
   const error = ref('')
   const updatedAt = ref(null)
+  // Ключ выборки, по которой сейчас показаны данные (для «параметры изменились»).
+  const loadedKey = ref(null)
 
   // ---------- загрузка ----------
 
@@ -83,6 +85,7 @@ export function useStats(props) {
       const hit = cacheStore.get(key)
       data.value = hit.data
       updatedAt.value = hit.at
+      loadedKey.value = key
       loading.value = false
       error.value = ''
       return
@@ -103,6 +106,7 @@ export function useStats(props) {
       if (my !== statToken) return // пришёл устаревший ответ — игнорируем
       data.value = res
       updatedAt.value = new Date()
+      loadedKey.value = key
       cacheStore.set(key, { data: res, at: updatedAt.value })
     } catch (e) {
       if (my === statToken) error.value = e.message || 'Ошибка загрузки'
@@ -111,18 +115,23 @@ export function useStats(props) {
     }
   }
 
+  // Собрать статистику по текущей выборке (по кнопке). Использует кэш.
+  const build = () => loadStats(false)
   // Принудительное обновление текущей выборки (мимо кэша фронта и сервера).
   const reload = () => loadStats(true)
 
+  // Статистика НЕ загружается автоматически — только по кнопке «Собрать».
+  // Автоматически подтягиваем лишь списки ботов и фильтров.
   onMounted(async () => {
     try {
+      // loadBots выставит state.bot, watch ниже подтянет фильтры.
       await loadBots()
     } catch (e) {
-      error.value = e.message || 'Не удалось загрузить список ботов'
+      error.value = e.message || 'Не удалось загрузить данные'
     }
   })
 
-  // Смена бота — перечитываем фильтры и статистику.
+  // Смена бота — перечитываем только фильтры (контрагенты/ссылки), без статистики.
   watch(() => state.bot, async (v) => {
     if (!v) return
     try {
@@ -130,11 +139,11 @@ export function useStats(props) {
     } catch (e) {
       error.value = e.message || 'Ошибка загрузки фильтров'
     }
-    await loadStats()
   })
 
-  // Смена периода/фильтров — только статистика.
-  watch(() => [state.period, state.link, state.cp], loadStats)
+  // Есть ли уже собранные данные и совпадают ли они с текущей выборкой.
+  const hasData = computed(() => data.value !== null)
+  const dirty = computed(() => cacheKey() !== loadedKey.value)
 
   // ---------- вспомогательное ----------
 
@@ -364,6 +373,7 @@ export function useStats(props) {
     state,
     period, periods, tabs, gen, ai, shop, btn, filters, sheet,
     botPlatform, botLabel, status, loading, error, reload,
+    build, hasData, dirty,
     setPeriod, setTab, openSheet, openDetail, closeSheet, resetFilters, pickOption,
   }
 }
