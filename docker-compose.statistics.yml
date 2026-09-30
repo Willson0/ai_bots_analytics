@@ -27,6 +27,9 @@ services:
     restart: always
     volumes:
       - ./backend:/var/www/laravel
+    # Держим php-fpm в форграунде (иначе контейнер падает по CMD из Dockerfile),
+    # заодно стартуем cron.
+    command: ["sh", "-c", "service cron start; php-fpm -F"]
     depends_on:
       - mysql
 
