@@ -1,0 +1,56 @@
+version: '3'
+
+services:
+  nginx:
+    image: nginx:latest
+    restart: always
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+      - ./backend:/var/www/laravel
+      - ./frontend/dist:/var/www/vue
+      - /etc/letsencrypt/live/abeta.app/privkey.pem:/etc/ssl/private/privkey.pem
+      - /etc/letsencrypt/live/abeta.app/fullchain.pem:/etc/ssl/certs/fullchain.pem
+    depends_on:
+      - php
+      - frontend
+
+  php:
+    build:
+      context: .
+      dockerfile: php/Dockerfile
+    container_name: php
+    restart: always
+    volumes:
+      - ./backend:/var/www/laravel
+    depends_on:
+      - mysql
+    command: ["sh", "-c", "php-fpm && cron -f"]
+
+  mysql:
+    image: mysql:latest
+    restart: always
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: laravel_db
+      MYSQL_USER: laravel_user
+      MYSQL_PASSWORD: laravel_pass
+    ports:
+      - "8101:3306"
+      - "8443:443"
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+    command: mysqld --character-set-server=utf8 --collation-server=utf8_unicode_ci
+
+  frontend:
+    image: node:20
+    restart: always
+    container_name: frontend
+    volumes:
+      - ./frontend:/var/www/vue
+    working_dir: /var/www/vue
+    command: bash -c "npm install && npm run build && tail -f /dev/null"
