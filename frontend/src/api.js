@@ -1,24 +1,14 @@
 // Обёртка над fetch к бэкенду.
-// Базовый адрес API берётся из /config.json (поле apiBase).
+// Базовый адрес API берётся из src/config.json (поле apiBase) на этапе сборки.
+// Файл config.json в .gitignore — на каждом окружении свой
+// (см. config.example.json).
 
+import config from './config.json'
 import { getInitData } from './telegram'
 
-let configPromise = null
-
-function loadConfig() {
-  if (!configPromise) {
-    const url = import.meta.env.BASE_URL + 'config.json'
-    configPromise = fetch(url, { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : {}))
-      .catch(() => ({}))
-  }
-  return configPromise
-}
+const API_BASE = (config.apiBase ?? '/api').replace(/\/+$/, '')
 
 export async function apiGet(path, params = {}) {
-  const cfg = await loadConfig()
-  const base = (cfg.apiBase ?? '/api').replace(/\/+$/, '')
-
   const qs = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {
     // 'all' и пустые значения означают «без фильтра» — не отправляем.
@@ -26,7 +16,7 @@ export async function apiGet(path, params = {}) {
     qs.append(k, v)
   }
   const query = qs.toString()
-  const url = base + path + (query ? '?' + query : '')
+  const url = API_BASE + path + (query ? '?' + query : '')
 
   const headers = { Accept: 'application/json' }
   const initData = getInitData()
