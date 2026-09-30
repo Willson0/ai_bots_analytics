@@ -1,96 +1,78 @@
-# Деплой проекта на сервер
+# Деплой на сервер (в поддиректорию `/statistics`)
 
-Проект поднимается через Docker Compose: nginx + php-fpm (Laravel) + MySQL + сборщик фронта (Vue).
-Фронт и API живут на **одном домене**: `/` — фронт, `/api` — Laravel.
+Сценарий: на сервере уже работает чужой бэкенд на домене `api.gptbackend.ru`
+(хостовый nginx проксирует `/` на `127.0.0.1:8000`). Наш проект нужно поставить на
+**тот же домен**, ничего не сломав, и отдавать по префиксу:
 
-> Для Telegram Mini App обязателен HTTPS, поэтому нужен домен и SSL-сертификат.
+- **Фронт:** `https://api.gptbackend.ru/statistics/`
+- **API:** `https://api.gptbackend.ru/statistics/api/...`
+
+Наш стек полностью изолирован в Docker и **не занимает порты 80/443** — их держит
+хостовый nginx. Наш nginx-контейнер слушает только `127.0.0.1:8080`, а хостовый nginx
+проксирует туда префикс `/statistics/`. Существующий бэкенд (`location /` → `:8000`)
+остаётся нетронутым.
+
+```
+                          api.gptbackend.ru  (хостовый nginx, SSL)
+                          ├── location /            → 127.0.0.1:8000   (ЧУЖОЙ бэкенд, не трогаем)
+                          └── location /statistics/ → 127.0.0.1:8080   (НАШ docker-nginx)
+                                                        ├── /      → фронт (Vue, dist)
+                                                        └── /api/  → Laravel (php-fpm)
+```
+
+> `/statistics/api/bots` → хостовый nginx срезает `/statistics` → наш nginx получает
+> `/api/bots` → Laravel. Внутри роуты остаются `/api/*`, менять их не нужно.
 
 ---
 
 ## 0. Что нужно заранее
 
-- VPS с Ubuntu 22.04+ (root или sudo).
-- Домен, A-запись которого указывает на IP сервера (например `stats.example.com`).
-- Токен Telegram-бота (от @BotFather).
-- Доступ к БД каждого бота (host/логин/пароль/имя) — их вносим в таблицу `bots`.
+- Доступ по SSH к серверу (sudo).
+- Установленный Docker (проверьте: `docker version`, `docker compose version`;
+  если нет — `curl -fsSL https://get.docker.com | sh` и `sudo usermod -aG docker $USER`).
+- Токен Telegram-бота (@BotFather).
+- Реквизиты БД каждого бота (host/логин/пароль/имя) — внесём в таблицу `bots`.
+
+Порты `8080` и `8101` на `127.0.0.1` должны быть свободны (у чужого бэкенда — `8000`, не пересекаемся).
 
 ---
 
-## 1. Установка Docker
+## 1. Забрать код
 
 ```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER      # чтобы docker работал без sudo
-# выйти и зайти заново по SSH (или: newgrp docker)
-docker version
-docker compose version             # compose v2 уже входит в комплект
-```
-
----
-
-## 2. Забрать код
-
-```bash
-cd /opt                            # или любой каталог
+cd /opt
 git clone <URL-репозитория> ai_bots_analytics
 cd ai_bots_analytics
 ```
 
 ---
 
-## 3. Создать рабочие конфиги из .example
+## 2. Создать рабочие конфиги из шаблонов
 
-В репозитории лежат шаблоны (`*.example`), а реальные файлы в `.gitignore` — их создаём вручную:
-
-```bash
-cp docker-compose.yml.example      docker-compose.yml
-cp nginx/default.conf.example      nginx/default.conf
-cp php/Dockerfile.example          php/Dockerfile          # если Dockerfile ещё нет
-cp backend/.env.example            backend/.env
-cp frontend/src/config.example.json frontend/src/config.json
-```
-
----
-
-## 4. Прописать свой домен
-
-Замените домен `abeta.app` на свой в двух местах.
-
-**`docker-compose.yml`** — пути к сертификатам в сервисе `nginx`:
-
-```yaml
-      - /etc/letsencrypt/live/ВАШ_ДОМЕН/privkey.pem:/etc/ssl/private/privkey.pem
-      - /etc/letsencrypt/live/ВАШ_ДОМЕН/fullchain.pem:/etc/ssl/certs/fullchain.pem
-```
-
-**`nginx/default.conf`** — можно добавить `server_name ВАШ_ДОМЕН;` в оба `server`-блока (не обязательно, сервер и так дефолтный). Пути к `fullchain.pem` / `privkey.pem` уже указывают на смонтированные сертификаты — их менять не нужно.
-
----
-
-## 5. Получить SSL-сертификат (Let's Encrypt)
-
-Порт 80 должен быть свободен (nginx-контейнер ещё не запущен):
+Реальные `docker-compose.yml` и `nginx/default.conf` в `.gitignore` — создаём их из
+готовых шаблонов под этот сценарий (`docker-compose.statistics.yml`, `nginx/statistics.conf`),
+которые уже настроены: без SSL, наш nginx на `127.0.0.1:8080`.
 
 ```bash
-sudo apt update && sudo apt install -y certbot
-sudo certbot certonly --standalone -d ВАШ_ДОМЕН
+cp docker-compose.statistics.yml     docker-compose.yml
+cp nginx/statistics.conf             nginx/default.conf
+cp php/Dockerfile.example            php/Dockerfile           # если ещё нет
+cp backend/.env.example              backend/.env
+cp frontend/src/config.example.json  frontend/src/config.json
 ```
 
-Сертификаты появятся в `/etc/letsencrypt/live/ВАШ_ДОМЕН/` — их и монтирует compose.
-Продление: `sudo certbot renew` (можно в cron; после продления перезапустить nginx-контейнер).
+Проверьте, что `docker-compose.yml` публикует наш nginx как `127.0.0.1:8080:80`
+(а не `80:80`/`443:443`), а `nginx/default.conf` слушает только `listen 80;` без SSL.
 
 ---
 
-## 6. Настроить backend/.env
-
-Главное — подключение к БД (в сети Docker хост БД называется `mysql`) и ключ приложения:
+## 3. backend/.env
 
 ```dotenv
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://ВАШ_ДОМЕН
+APP_URL=https://api.gptbackend.ru/statistics
 
-# Основная БД (реестр ботов). Значения совпадают с сервисом mysql в docker-compose.
 DB_CONNECTION=mysql
 DB_HOST=mysql
 DB_PORT=3306
@@ -98,60 +80,89 @@ DB_DATABASE=laravel_db
 DB_USERNAME=laravel_user
 DB_PASSWORD=laravel_pass
 
-# Чтобы не заводить таблицы sessions/cache/jobs — используем файлы:
 SESSION_DRIVER=file
 CACHE_STORE=file
 QUEUE_CONNECTION=sync
 
-# Токен бота (нужен утилитам отправки в Telegram)
 TELEGRAM_BOT_TOKEN=123456:ВАШ_ТОКЕН
 ```
-
-`APP_KEY` оставьте пустым — сгенерируем в шаге 8.
+`APP_KEY` оставьте пустым — сгенерируем в шаге 5.
 
 ---
 
-## 7. Настроить frontend/src/config.json
+## 4. frontend/src/config.json
 
-Так как фронт и API на одном домене, оставьте относительный путь:
+Фронт живёт под `/statistics/`, API — под `/statistics/api`:
 
 ```json
-{ "apiBase": "/api" }
+{ "apiBase": "/statistics/api" }
 ```
 
-(Отдельный адрес бэкенда указывают здесь только если API на другом домене — тогда, помимо URL, на бэке понадобится CORS.)
+(Базовый путь `/statistics/` уже прописан в `vite.config.js` — трогать не нужно.)
 
 ---
 
-## 8. Запуск
+## 5. Запуск docker-стека
 
 ```bash
 docker compose up -d --build
 ```
 
-Что произойдёт:
-- `mysql` — поднимет базу `laravel_db`;
-- `frontend` — выполнит `npm install && npm run build`, положит сборку в `frontend/dist` (первый билд занимает пару минут — следите за логами: `docker compose logs -f frontend`);
-- `php` — контейнер с Laravel;
-- `nginx` — отдаёт фронт и проксирует `/api` в php.
+- `mysql` — база `laravel_db` (только на `127.0.0.1:8101`);
+- `frontend` — `npm install && npm run build` → `frontend/dist` (следите: `docker compose logs -f frontend`);
+- `php` — Laravel;
+- `nginx` — наш, на `127.0.0.1:8080`.
 
-Инициализация Laravel (один раз):
-
+Инициализация Laravel:
 ```bash
 docker compose exec php composer install --no-dev --optimize-autoloader
 docker compose exec php php artisan key:generate
 docker compose exec php php artisan migrate --force
 docker compose exec php php artisan storage:link
-# права на запись:
 docker compose exec php chmod -R 775 storage bootstrap/cache
+```
+
+Проверка, что наш стек отвечает локально (ещё до хостового nginx):
+```bash
+curl -i http://127.0.0.1:8080/api/bots      # ожидаем JSON (или []), не 502
+curl -sI http://127.0.0.1:8080/             # ожидаем 200 и index.html
 ```
 
 ---
 
-## 9. Завести ботов в таблице bots
+## 6. Подключить в хостовый nginx (НЕ ломая чужой бэкенд)
 
-Основная БД хранит только реестр ботов и данные подключения к БД **каждого** бота.
-Добавьте строки (host/логин/пароль/имя БД — это реквизиты БД конкретного бота):
+Открой конфиг существующего сайта:
+```bash
+sudo nano /etc/nginx/sites-enabled/default
+```
+
+В **существующий** блок `server { server_name api.gptbackend.ru; listen 443 ssl; … }`
+добавь только эти строки (блок `location /` для чужого бэкенда оставь как есть):
+
+```nginx
+    # --- Statistics Mini App (наш проект) ---
+    location = /statistics { return 301 /statistics/; }
+
+    location /statistics/ {
+        proxy_pass http://127.0.0.1:8080/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+```
+
+Префикс `/statistics/` длиннее, чем `/`, поэтому nginx отдаёт его нам, а всё остальное —
+по-прежнему чужому бэкенду. Ничего удалять не нужно.
+
+Проверь и применить:
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+---
+
+## 7. Завести ботов в таблице bots
 
 ```bash
 docker compose exec php php artisan tinker
@@ -159,59 +170,54 @@ docker compose exec php php artisan tinker
 ```php
 \App\Models\Bots::create([
   'name'        => 'tg_hypergpt',
-  'db_host'     => '10.0.0.5',      // хост БД бота (виден из контейнера php)
+  'db_host'     => '10.0.0.5',      // хост БД бота, доступный из контейнера php
   'bd_login'    => 'bot_user',
   'bd_password' => 'bot_password',
   'bd_name'     => 'hypergpt',
 ]);
 ```
-
-> Важно: `db_host` каждого бота должен быть доступен из контейнера `php`.
-> Если БД бота — это тот же MySQL из compose, укажите `db_host = mysql`.
-> Если внешний сервер — откройте к нему сетевой доступ с этого VPS.
+Если БД бота — этот же MySQL из compose, укажи `db_host = mysql`.
+Если внешняя — открой к ней сетевой доступ с сервера.
 
 ---
 
-## 10. Подключить Web App в Telegram
+## 8. Telegram
 
-У @BotFather:
-- `/newapp` (или `/setmenubutton`) → выбрать бота → указать URL `https://ВАШ_ДОМЕН`.
-
-После этого кнопка/мини-приложение откроет статистику прямо в Telegram.
+У @BotFather: `/newapp` или `/setmenubutton` → URL `https://api.gptbackend.ru/statistics/`
+(со слэшем на конце).
 
 ---
 
-## 11. Проверка
+## 9. Финальная проверка
 
 ```bash
-curl https://ВАШ_ДОМЕН/api/bots         # должен вернуться JSON со списком ботов
+curl https://api.gptbackend.ru/statistics/api/bots     # JSON со списком ботов
 ```
-Откройте `https://ВАШ_ДОМЕН` в браузере — увидите экран статистики. В самом Telegram — через кнопку Web App.
+Открой `https://api.gptbackend.ru/statistics/` в браузере — экран статистики.
+Чужой бэкенд проверь отдельно (его обычный адрес) — он должен работать как раньше.
 
 ---
 
-## Частые команды
+## Обновление
 
 ```bash
-docker compose ps                       # статус
-docker compose logs -f php              # логи Laravel/php
-docker compose logs -f frontend         # логи сборки фронта
-docker compose restart nginx            # перезапустить nginx (например после renew)
-
-# Пересобрать фронт после изменений:
-docker compose exec frontend npm run build && docker compose restart nginx
-
-# Обновить бэкенд после git pull:
+git pull
 docker compose exec php composer install --no-dev --optimize-autoloader
 docker compose exec php php artisan migrate --force
 docker compose exec php php artisan config:clear
+docker compose exec frontend npm run build      # пересобрать фронт
+docker compose restart nginx
 ```
 
 ---
 
-## Возможные грабли
+## Грабли
 
-- **502 на `/api`** — не поднялся php или composer-зависимости не установлены. Смотрите `docker compose logs php`.
-- **Пустой фронт / 404** — сборка ещё идёт или `frontend/dist` пуст. Проверьте `docker compose logs -f frontend`.
-- **`Connection refused` при запросе статистики** — `db_host` бота недоступен из контейнера php (сеть/файрвол/неверные реквизиты в таблице `bots`).
-- **Не открывается в Telegram** — Mini App требует валидный HTTPS-сертификат и точный URL в BotFather.
+- **502 на `/statistics/api`** — не поднялся php/`composer install`, или наш nginx не слушает 8080.
+  Проверь `curl http://127.0.0.1:8080/api/bots` и `docker compose logs php nginx`.
+- **Пустой фронт / 404 на ассеты** — фронт не собран под `base=/statistics/` или `dist` пуст.
+  Проверь `docker compose logs -f frontend` и что в `dist/index.html` пути начинаются с `/statistics/`.
+- **Сломался чужой сайт** — значит зацепили `location /` или порты 80/443. Наш стек должен
+  публиковаться только на `127.0.0.1:8080`; в хостовый nginx добавляется ТОЛЬКО `location /statistics/`.
+- **`Connection refused` при запросе статистики** — `db_host` бота недоступен из контейнера php.
+- **Не открывается в Telegram** — URL Mini App должен быть точным, с `/statistics/` и по HTTPS.
