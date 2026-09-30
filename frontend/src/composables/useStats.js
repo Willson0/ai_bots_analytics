@@ -336,14 +336,17 @@ export function useStats(props) {
 
   // ---------- действия ----------
 
-  const setPeriod = (k) => { state.period = k }
+  // Во время загрузки блокируем действия, инициирующие новый запрос,
+  // чтобы не плодить параллельные обращения к серверу.
+  const setPeriod = (k) => { if (loading.value) return; state.period = k }
   const setTab = (k) => { state.tab = k }
-  const openSheet = (type) => { state.sheet = type; state.q = '' }
+  const openSheet = (type) => { if (loading.value) return; state.sheet = type; state.q = '' }
   const openDetail = (d) => { state.sheet = 'detail'; state.detailData = d }
   const closeSheet = () => { state.sheet = null }
-  const resetFilters = () => { state.link = 'all'; state.cp = 'all' }
+  const resetFilters = () => { if (loading.value) return; state.link = 'all'; state.cp = 'all' }
 
   function pickOption(id) {
+    if (loading.value) return
     if (state.sheet === 'bot') {
       state.bot = id
     } else if (state.sheet === 'link') {

@@ -33,7 +33,7 @@ const chevron = 'm6 9 6 6 6-6'
       </span>
     </div>
 
-    <button class="bot-picker" @click="openSheet('bot')">
+    <button class="bot-picker" :disabled="loading" @click="openSheet('bot')">
       <span class="platform">{{ botPlatform }}</span>
       <span class="stack" style="min-width: 0">
         <span class="label">Бот</span>
@@ -46,19 +46,20 @@ const chevron = 'm6 9 6 6 6-6'
       <button
         v-for="p in periods" :key="p.k"
         class="period" :class="{ 'period--on': p.active }"
+        :disabled="loading"
         @click="setPeriod(p.k)"
       >{{ p.label }}</button>
     </div>
 
     <div class="grid-2 filters">
-      <button class="filter" @click="openSheet('link')">
+      <button class="filter" :disabled="loading" @click="openSheet('link')">
         <span class="stack" style="min-width: 0">
           <span class="label">Ссылка</span>
           <span class="filter-value ellipsis" :class="{ 'is-set': filters.linkActive }">{{ filters.linkLabel }}</span>
         </span>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path :d="chevron" /></svg>
       </button>
-      <button class="filter" @click="openSheet('cp')">
+      <button class="filter" :disabled="loading" @click="openSheet('cp')">
         <span class="stack" style="min-width: 0">
           <span class="label">Контрагент</span>
           <span class="filter-value ellipsis" :class="{ 'is-set': filters.cpActive }">{{ filters.cpLabel }}</span>
@@ -69,7 +70,7 @@ const chevron = 'm6 9 6 6 6-6'
 
     <div v-if="filters.hasFilter" class="filter-banner">
       <span>Фильтр: {{ filters.short }}</span>
-      <button class="reset" @click="resetFilters">Сбросить</button>
+      <button class="reset" :disabled="loading" @click="resetFilters">Сбросить</button>
     </div>
 
     <div class="tabs">
@@ -174,6 +175,11 @@ const chevron = 'm6 9 6 6 6-6'
   font-size: 13px; font-weight: 800; border-bottom: 3px solid transparent; color: var(--color-neutral-600);
 }
 .tab--on { border-bottom-color: var(--color-accent); color: var(--color-text); }
+
+/* блокировка управления во время загрузки */
+.bot-picker:disabled, .period:disabled, .filter:disabled, .reset:disabled { opacity: .5; cursor: default; }
+.bot-picker:disabled:hover { background: var(--color-surface); }
+.filter:disabled:hover { background: transparent; }
 
 /* статус + кнопка обновления */
 .status-line { display: flex; align-items: center; gap: 8px; }
