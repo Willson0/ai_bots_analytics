@@ -96,15 +96,15 @@ class StatisticsController extends Controller
 
             $partners = $db->table('partners')->get(['id', 'name', 'links']);
 
-            // Карта link_id -> partner_id (partners.links — JSON-массив id ссылок).
-            $linkToPartner = [];
+            // Карта имя_ссылки -> partner_id (partners.links — JSON-массив ИМЁН ссылок).
+            $nameToPartner = [];
             foreach ($partners as $partner) {
-                $ids = is_array($partner->links) ? $partner->links : json_decode((string) $partner->links, true);
-                if (!is_array($ids)) {
+                $names = is_array($partner->links) ? $partner->links : json_decode((string) $partner->links, true);
+                if (!is_array($names)) {
                     continue;
                 }
-                foreach ($ids as $linkId) {
-                    $linkToPartner[(int) $linkId] = (int) $partner->id;
+                foreach ($names as $n) {
+                    $nameToPartner[(string) $n] = (int) $partner->id;
                 }
             }
 
@@ -114,7 +114,7 @@ class StatisticsController extends Controller
                 ->map(fn ($link) => [
                     'id'         => (int) $link->id,
                     'name'       => (string) $link->name,
-                    'contragent' => $linkToPartner[(int) $link->id] ?? null,
+                    'contragent' => $nameToPartner[(string) $link->name] ?? null,
                 ])
                 ->all();
 

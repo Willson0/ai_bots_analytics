@@ -31,8 +31,8 @@ export function useStats(props) {
   const state = reactive({
     bot: null,
     period: '30',
-    linkSel: [],     // выбранные ссылки (id), пусто = все
-    cpSel: [],       // выбранные контрагенты (id), пусто = все
+    cp: null,        // выбранный контрагент (id) — одиночный, null = все
+    linkSel: [],     // выбранные ссылки (id) — множественный, пусто = все
     tab: 'gen',
     sheet: null,     // null | 'bot' | 'link' | 'cp' | 'detail'
     detailData: null,
@@ -56,9 +56,8 @@ export function useStats(props) {
   // чтобы переключение назад показывало данные мгновенно, без нового запроса.
   const cacheStore = new Map()
   const cacheKey = () => {
-    const cps = [...state.cpSel].sort((a, b) => a - b).join('_')
     const lks = [...state.linkSel].sort((a, b) => a - b).join('_')
-    return `${state.bot}|${state.period}|${cps}|${lks}`
+    return `${state.bot}|${state.period}|${state.cp ?? ''}|${lks}`
   }
 
   let statToken = 0
@@ -78,7 +77,7 @@ export function useStats(props) {
     contragents.value = f.contragents || []
     links.value = f.links || []
     // Оставляем в фильтрах только то, что есть у выбранного бота.
-    state.cpSel = state.cpSel.filter((id) => contragents.value.some((c) => c.id === id))
+    if (state.cp !== null && !contragents.value.some((c) => c.id === state.cp)) state.cp = null
     state.linkSel = state.linkSel.filter((id) => links.value.some((l) => l.id === id))
   }
 
@@ -105,7 +104,7 @@ export function useStats(props) {
       const res = await apiGet('/statistics', {
         time: p.time,
         bot: state.bot,
-        contragent: state.cpSel,
+        contragent: state.cp != null ? [state.cp] : [],
         link: state.linkSel,
         refresh: force ? 1 : undefined, // сброс серверного кэша при принудительном обновлении
       })
@@ -305,15 +304,16 @@ export function useStats(props) {
 
   const filters = computed(() => {
     const linkNames = state.linkSel.map((id) => linkName(id) || ('#' + id))
-    const cpNames = state.cpSel.map((id) => cpName(id) || ('#' + id))
+    const cpLabel = state.cp != null ? (cpName(state.cp) || ('#' + state.cp)) : 'Все'
     const linkLabel = linkNames.length ? linkNames.join(', ') : 'Все ссылки'
-    const cpLabel = cpNames.length ? cpNames.join(', ') : 'Все'
-    const hasFilter = linkNames.length > 0 || cpNames.length > 0
-    const short = hasFilter ? [...cpNames, ...linkNames].join(' · ') : 'все ссылки и контрагенты'
+    const hasFilter = state.cp != null || linkNames.length > 0
+    const short = hasFilter
+      ? [state.cp != null ? cpLabel : null, ...linkNames].filter(Boolean).join(' · ')
+      : 'все ссылки и контрагенты'
     return {
       linkLabel, cpLabel, hasFilter, short,
       linkActive: state.linkSel.length > 0,
-      cpActive: state.cpSel.length > 0,
+      cpActive: state.cp != null,
     }
   })
 
@@ -330,20 +330,20 @@ export function useStats(props) {
         current: st.bot,
       }
     } else if (st.sheet === 'link') {
-      // Если выбраны контрагенты — показываем только их ссылки.
-      const pool = st.cpSel.length
-        ? links.value.filter((l) => st.cpSel.includes(l.contragent))
+      // Если выбран контрагент — показываем только его ссылки.
+      const pool = st.cp != null
+        ? links.value.filter((l) => l.contragent === st.cp)
         : links.value
       s = {
         isPick: true, multi: true, selected: st.linkSel,
         kicker: 'Фильтр · можно несколько', title: 'Ссылки', ph: 'Поиск по ссылке или контрагенту',
-        options: [{ id: 'all', name: 'Все ссылки', sub: st.cpSel.length ? 'Все ссылки выбранных контрагентов' : 'Без фильтра по ссылкам' }]
+        options: [{ id: 'all', name: 'Все ссылки', sub: st.cp != null ? 'Все ссылки контрагента' : 'Без фильтра по ссылкам' }]
           .concat(pool.map((l) => ({ id: l.id, name: l.name, sub: cpName(l.contragent) || 'Без контрагента' }))),
       }
     } else if (st.sheet === 'cp') {
       s = {
-        isPick: true, multi: true, selected: st.cpSel,
-        kicker: 'Фильтр · можно несколько', title: 'Контрагенты', ph: 'Поиск по названию или ссылке',
+        isPick: true, multi: false, kicker: 'Фильтр', title: 'Контрагент', ph: 'Поиск по названию или ссылке',
+        current: st.cp,
         options: [{ id: 'all', name: 'Все', sub: 'Без фильтра по контрагентам' }]
           .concat(contragents.value.map((c) => ({
             id: c.id, name: c.name,
@@ -358,7 +358,7 @@ export function useStats(props) {
         ...o,
         on: s.multi
           ? (o.id === 'all' ? s.selected.length === 0 : s.selected.includes(o.id))
-          : o.id === s.current,
+          : (o.id === 'all' ? s.current == null : o.id === s.current),
       }))
       if (q) s.options = s.options.filter((o) => o.id !== 'all' && (o.name + ' ' + o.sub).toLowerCase().includes(q))
       s.none = s.options.length === 0
@@ -386,7 +386,7 @@ export function useStats(props) {
   const openSheet = (type) => { if (loading.value) return; state.sheet = type; state.q = '' }
   const openDetail = (d) => { state.sheet = 'detail'; state.detailData = d }
   const closeSheet = () => { state.sheet = null }
-  const resetFilters = () => { if (loading.value) return; state.linkSel = []; state.cpSel = [] }
+  const resetFilters = () => { if (loading.value) return; state.cp = null; state.linkSel = [] }
 
   const toggle = (arr, id) => {
     const i = arr.indexOf(id)
@@ -401,20 +401,18 @@ export function useStats(props) {
       state.sheet = null           // бот — одиночный выбор, закрываем
       return
     }
-    // Ссылки/контрагенты — мультивыбор, шторку НЕ закрываем.
+    if (state.sheet === 'cp') {
+      // Контрагент — одиночный выбор. Меняем контрагента → сбрасываем ссылки
+      // (их набор зависит от контрагента). Закрываем шторку.
+      state.cp = id === 'all' ? null : id
+      state.linkSel = []
+      state.sheet = null
+      return
+    }
     if (state.sheet === 'link') {
+      // Ссылки — мультивыбор, шторку НЕ закрываем.
       if (id === 'all') state.linkSel = []
       else toggle(state.linkSel, id)
-    } else if (state.sheet === 'cp') {
-      if (id === 'all') state.cpSel = []
-      else toggle(state.cpSel, id)
-      // Оставляем в выбранных ссылках только те, что принадлежат выбранным контрагентам.
-      if (state.cpSel.length) {
-        state.linkSel = state.linkSel.filter((lid) => {
-          const l = links.value.find((x) => x.id === lid)
-          return l && state.cpSel.includes(l.contragent)
-        })
-      }
     }
   }
 
