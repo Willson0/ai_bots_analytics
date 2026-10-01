@@ -338,7 +338,7 @@ export function useStats(props) {
         isPick: true, multi: true, selected: st.linkSel,
         kicker: 'Фильтр · можно несколько', title: 'Ссылки', ph: 'Поиск по ссылке или контрагенту',
         options: [{ id: 'all', name: 'Все ссылки', sub: st.cp != null ? 'Все ссылки контрагента' : 'Без фильтра по ссылкам' }]
-          .concat(pool.map((l) => ({ id: l.id, name: l.name, sub: cpName(l.contragent) || 'Без контрагента' }))),
+          .concat(pool.map((l) => ({ id: l.id, name: l.name, sub: l.contragent_name || cpName(l.contragent) || 'Без контрагента' }))),
       }
     } else if (st.sheet === 'cp') {
       s = {

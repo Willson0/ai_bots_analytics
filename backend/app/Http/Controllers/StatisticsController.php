@@ -101,22 +101,31 @@ class StatisticsController extends Controller
 
             $partners = $db->table('partners')->get(['id', 'name', 'links']);
 
-            // Карта имя_ссылки -> partner_id (partners.links — JSON-массив ИМЁН ссылок).
+            // Карта имя_ссылки(lower) -> partner_id и id -> имя партнёра.
+            // partners.links — массив ИМЁН ссылок; матчим без учёта регистра/пробелов.
             $nameToPartner = [];
+            $partnerNames = [];
             foreach ($partners as $partner) {
+                $pid = (int) $partner->id;
+                $partnerNames[$pid] = (string) ($partner->name ?? ('Партнёр #' . $pid));
                 foreach ($this->decodeLinkNames($partner->links) as $n) {
-                    $nameToPartner[$n] = (int) $partner->id;
+                    $nameToPartner[mb_strtolower($n)] = $pid;
                 }
             }
 
             $links = $db->table('links')
                 ->orderBy('id')
                 ->get(['id', 'name'])
-                ->map(fn ($link) => [
-                    'id'         => (int) $link->id,
-                    'name'       => (string) $link->name,
-                    'contragent' => $nameToPartner[trim((string) $link->name)] ?? null,
-                ])
+                ->map(function ($link) use ($nameToPartner, $partnerNames) {
+                    $key = mb_strtolower(trim((string) $link->name));
+                    $cid = $nameToPartner[$key] ?? null;
+                    return [
+                        'id'              => (int) $link->id,
+                        'name'            => (string) $link->name,
+                        'contragent'      => $cid,
+                        'contragent_name' => $cid !== null ? ($partnerNames[$cid] ?? null) : null,
+                    ];
+                })
                 ->all();
 
             $contragents = $partners->map(fn ($p) => [
