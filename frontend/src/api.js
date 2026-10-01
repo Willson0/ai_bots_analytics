@@ -11,9 +11,15 @@ const API_BASE = (config.apiBase ?? '/api').replace(/\/+$/, '')
 export async function apiGet(path, params = {}) {
   const qs = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {
-    // 'all' и пустые значения означают «без фильтра» — не отправляем.
     if (v === null || v === undefined || v === '' || v === 'all') continue
-    qs.append(k, v)
+    if (Array.isArray(v)) {
+      // Массивы (напр. contragent[], link[]) — пустой массив = без фильтра.
+      for (const item of v) {
+        if (item !== null && item !== undefined && item !== '') qs.append(k + '[]', item)
+      }
+    } else {
+      qs.append(k, v)
+    }
   }
   const query = qs.toString()
   const url = API_BASE + path + (query ? '?' + query : '')

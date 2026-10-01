@@ -53,13 +53,17 @@ class BotAnalyticsService
      */
     private ?array $linkNames = null;
 
-    public function __construct(Bots $bot, int $time, ?int $contragent = null, ?int $link = null)
+    /**
+     * @param int[] $contragents id контрагентов (partners) — фильтр по объединению
+     * @param int[] $links        id ссылок (links) — фильтр по объединению
+     */
+    public function __construct(Bots $bot, int $time, array $contragents = [], array $links = [])
     {
         $this->db = BotDatabase::connect($bot);
         $this->time = $time;
 
         $this->resolvePeriod();
-        $this->resolveUserFilter($contragent, $link);
+        $this->resolveUserFilter($contragents, $links);
     }
 
     // ------------------------------------------------------------------
@@ -167,30 +171,35 @@ class BotAnalyticsService
     // Фильтры по контрагенту / ссылке
     // ------------------------------------------------------------------
 
-    private function resolveUserFilter(?int $contragent, ?int $link): void
+    /**
+     * Фильтр по объединению (OR): берём имена ссылок всех выбранных ссылок
+     * И всех ссылок выбранных контрагентов, объединяем в один набор.
+     *
+     * @param int[] $contragents
+     * @param int[] $links
+     */
+    private function resolveUserFilter(array $contragents, array $links): void
     {
-        $sets = [];
-
-        if ($link !== null) {
-            $name = $this->db->table('links')->where('id', $link)->value('name');
-            $sets[] = $name !== null ? [(string) $name] : [];
-        }
-
-        if ($contragent !== null) {
-            $sets[] = $this->partnerLinkNames($contragent);
-        }
-
-        if (empty($sets)) {
-            $this->linkNames = null;
+        if (empty($contragents) && empty($links)) {
+            $this->linkNames = null; // фильтр не задан — учитываем всех
             return;
         }
 
-        $names = array_shift($sets);
-        foreach ($sets as $set) {
-            $names = array_values(array_intersect($names, $set));
+        $names = [];
+
+        if (!empty($links)) {
+            $names = $this->db->table('links')
+                ->whereIn('id', $links)
+                ->pluck('name')
+                ->map(fn ($n) => (string) $n)
+                ->all();
         }
 
-        $this->linkNames = $names;
+        foreach ($contragents as $cid) {
+            $names = array_merge($names, $this->partnerLinkNames((int) $cid));
+        }
+
+        $this->linkNames = array_values(array_unique($names));
     }
 
     /**

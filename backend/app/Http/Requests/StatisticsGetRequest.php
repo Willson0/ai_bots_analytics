@@ -7,32 +7,30 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class StatisticsGetRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
         return true;
     }
 
     /**
-     * Get the validation rules that apply to the request.
+     * contragent и link — массивы id (можно несколько, фильтр по объединению).
      *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
-    public function rules (): array {
+    public function rules(): array
+    {
         return [
-            'time' => 'required|integer|min:0',
-            "contragent" => "nullable|integer",
-            "link" => "nullable|integer",
-            "bot" => "required|integer|exists:bots,id",
+            'time'         => 'required|integer|min:0',
+            'contragent'   => 'nullable|array',
+            'contragent.*' => 'integer',
+            'link'         => 'nullable|array',
+            'link.*'       => 'integer',
+            'bot'          => 'required|integer|exists:bots,id',
         ];
     }
 
     public function messages(): array
     {
-        return [
-
-        ];
+        return [];
     }
 }

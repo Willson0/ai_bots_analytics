@@ -27,21 +27,31 @@ class StatisticsController extends Controller
     {
         $data = $request->validated();
 
-        $bot        = (int) $data['bot'];
-        $time       = (int) $data['time'];
-        $contragent = isset($data['contragent']) ? (int) $data['contragent'] : null;
-        $link       = isset($data['link']) ? (int) $data['link'] : null;
+        $bot  = (int) $data['bot'];
+        $time = (int) $data['time'];
 
-        $key = sprintf('stats:%d:%d:%s:%s', $bot, $time, $contragent ?? 'all', $link ?? 'all');
+        // contragent и link — массивы id (фильтр по объединению).
+        $contragents = array_values(array_unique(array_map('intval', $data['contragent'] ?? [])));
+        $links       = array_values(array_unique(array_map('intval', $data['link'] ?? [])));
+        sort($contragents);
+        sort($links);
+
+        $key = sprintf(
+            'stats:%d:%d:c%s:l%s',
+            $bot,
+            $time,
+            implode('_', $contragents) ?: 'all',
+            implode('_', $links) ?: 'all'
+        );
         $ttl = $this->statsTtl($time);
 
         if ($request->boolean('refresh')) {
             Cache::forget($key);
         }
 
-        $payload = Cache::remember($key, $ttl, function () use ($bot, $time, $contragent, $link) {
+        $payload = Cache::remember($key, $ttl, function () use ($bot, $time, $contragents, $links) {
             $model = Bots::findOrFail($bot);
-            return (new BotAnalyticsService($model, $time, $contragent, $link))->collect();
+            return (new BotAnalyticsService($model, $time, $contragents, $links))->collect();
         });
 
         return response()->json($payload);

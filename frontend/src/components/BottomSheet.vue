@@ -49,6 +49,11 @@ const vFocus = { mounted: (el) => el.focus() }
         </span>
         <svg v-if="o.on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2.6"><path d="M20 6 9 17l-5-5" /></svg>
       </button>
+
+      <!-- Для мультивыбора (ссылки/контрагенты) — кнопка завершить выбор -->
+      <div v-if="sheet.multi" class="done-bar">
+        <button class="done" type="button" @click="emit('close')">Готово</button>
+      </div>
       <div class="spacer" />
     </template>
 
@@ -121,6 +126,14 @@ const vFocus = { mounted: (el) => el.focus() }
 .option--on { background: var(--color-accent-100); }
 .option:hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
 .option-name { font-size: 15px; font-weight: 600; }
+
+.done-bar { position: sticky; bottom: 0; padding: 12px 16px; background: var(--color-bg); border-top: 2px solid var(--color-divider); }
+.done {
+  width: 100%; border: 2px solid var(--color-accent); background: var(--color-accent); color: var(--color-bg);
+  font-weight: 800; font-size: 15px; padding: 12px 16px; cursor: pointer;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.done:hover { background: var(--color-accent-600); }
 
 .detail { padding: 18px 16px 16px; display: flex; flex-direction: column; gap: 6px; border-bottom: 2px solid var(--color-divider); }
 .detail-chart { margin-top: 12px; }
