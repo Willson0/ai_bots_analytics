@@ -1,5 +1,3 @@
-version: '3'
-
 # Наш стек изолирован и НЕ занимает 80/443 — их держит хостовый nginx.
 # Наш nginx публикуется только на localhost:8080, куда хостовый nginx
 # проксирует префикс /statistics/.
@@ -43,10 +41,12 @@ services:
       MYSQL_USER: laravel_user
       MYSQL_PASSWORD: laravel_pass
     ports:
-      - "127.0.0.1:8101:3306"
+      # Внешний доступ к MySQL (8101 -> 3306). ВНИМАНИЕ: порт открыт наружу,
+      # обязательно смени пароли и ограничь доступ по IP на фаерволе провайдера.
+      - "8101:3306"
     volumes:
       - ./mysql-data:/var/lib/mysql
-    command: mysqld --character-set-server=utf8 --collation-server=utf8_unicode_ci
+    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
 
   frontend:
     image: node:20
