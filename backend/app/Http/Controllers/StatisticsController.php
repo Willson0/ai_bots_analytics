@@ -56,11 +56,11 @@ class StatisticsController extends Controller
         $bots = Cache::remember('stats:bots', self::LISTS_TTL, function () {
             return Bots::query()
                 ->orderBy('name')
-                ->get(['id', 'name'])
+                ->get(['id', 'name', 'platform'])
                 ->map(fn (Bots $bot) => [
                     'id'       => $bot->id,
                     'name'     => $bot->name,
-                    'platform' => $this->platform($bot->name),
+                    'platform' => $this->platform($bot->platform, $bot->name),
                 ])
                 ->all();
         });
@@ -135,12 +135,19 @@ class StatisticsController extends Controller
     }
 
     /**
-     * Грубое определение платформы по имени бота (для бейджа в UI).
+     * Площадка бота для бейджа в UI: MAX или TG.
+     * Берём из колонки platform; если пусто — запасной вариант по имени.
      */
-    private function platform(?string $name): string
+    private function platform(?string $platform, ?string $name): string
     {
-        $name = mb_strtolower((string) $name);
+        $p = mb_strtolower(trim((string) $platform));
+        if ($p === 'max') {
+            return 'MAX';
+        }
+        if ($p === 'tg' || $p === 'telegram') {
+            return 'TG';
+        }
 
-        return str_contains($name, 'max') ? 'MAX' : 'TG';
+        return str_contains(mb_strtolower((string) $name), 'max') ? 'MAX' : 'TG';
     }
 }

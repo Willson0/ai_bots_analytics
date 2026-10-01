@@ -174,6 +174,7 @@ docker compose exec php php artisan tinker
 ```php
 \App\Models\Bots::create([
   'name'        => 'tg_hypergpt',
+  'platform'    => 'tg',           // 'tg' (Telegram) или 'max' (MAX)
   'db_host'     => '10.0.0.5',      // хост БД бота, доступный из контейнера php
   'bd_login'    => 'bot_user',
   'bd_password' => 'bot_password',
