@@ -211,15 +211,17 @@ class BotAnalyticsService
     {
         $raw = $this->db->table('partners')->where('id', $contragent)->value('links');
 
-        $v = $raw;
-        if (is_string($v)) {
-            $v = json_decode($v, true);
-        }
-        if (is_string($v)) {
-            $v = json_decode($v, true);
-        }
-        if (!is_array($v)) {
-            return [];
+        if (is_array($raw)) {
+            $v = $raw;
+        } else {
+            $s = (string) $raw;
+            $v = json_decode($s, true);
+            if (is_string($v)) {
+                $v = json_decode($v, true);
+            }
+            if (!is_array($v)) {
+                $v = preg_match_all('/[\'"]([^\'"]+)[\'"]/u', $s, $m) ? $m[1] : [];
+            }
         }
 
         $out = [];

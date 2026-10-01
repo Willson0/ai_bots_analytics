@@ -138,15 +138,19 @@ class StatisticsController extends Controller
      */
     private function decodeLinkNames($raw): array
     {
-        $v = $raw;
-        if (is_string($v)) {
-            $v = json_decode($v, true);
-        }
-        if (is_string($v)) {              // вдруг двойная упаковка
-            $v = json_decode($v, true);
-        }
-        if (!is_array($v)) {
-            return [];
+        if (is_array($raw)) {
+            $v = $raw;
+        } else {
+            $s = (string) $raw;
+            $v = json_decode($s, true);
+            if (is_string($v)) {                 // двойная упаковка
+                $v = json_decode($v, true);
+            }
+            if (!is_array($v)) {
+                // Фоллбэк: не-JSON формат (напр. python-repr ['a','b'])
+                // — вытаскиваем все токены в кавычках (одинарных или двойных).
+                $v = preg_match_all('/[\'"]([^\'"]+)[\'"]/u', $s, $m) ? $m[1] : [];
+            }
         }
 
         $out = [];
