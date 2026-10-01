@@ -204,30 +204,35 @@ class BotAnalyticsService
 
     /**
      * Имена ссылок (links.name), закреплённых за партнёром.
-     * partners.links — JSON: массив id ссылок (или их имён).
+     * partners.links — JSON-массив ИМЁН ссылок. Терпим к форматам
+     * (массив / JSON-строка / двойная упаковка).
      */
     private function partnerLinkNames(int $contragent): array
     {
         $raw = $this->db->table('partners')->where('id', $contragent)->value('links');
-        if ($raw === null) {
+
+        $v = $raw;
+        if (is_string($v)) {
+            $v = json_decode($v, true);
+        }
+        if (is_string($v)) {
+            $v = json_decode($v, true);
+        }
+        if (!is_array($v)) {
             return [];
         }
 
-        $decoded = is_array($raw) ? $raw : json_decode((string) $raw, true);
-        if (!is_array($decoded) || empty($decoded)) {
-            return [];
+        $out = [];
+        foreach ($v as $n) {
+            if (is_array($n)) {
+                continue;
+            }
+            $name = trim((string) $n);
+            if ($name !== '') {
+                $out[] = $name;
+            }
         }
-
-        $allNumeric = collect($decoded)->every(fn ($v) => is_int($v) || ctype_digit((string) $v));
-        if ($allNumeric) {
-            return $this->db->table('links')
-                ->whereIn('id', array_map('intval', $decoded))
-                ->pluck('name')
-                ->map(fn ($n) => (string) $n)
-                ->all();
-        }
-
-        return array_map('strval', $decoded);
+        return $out;
     }
 
     /**

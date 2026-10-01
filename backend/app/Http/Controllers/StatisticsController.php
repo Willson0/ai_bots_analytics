@@ -89,8 +89,13 @@ class StatisticsController extends Controller
         ]);
 
         $botId = $request->integer('bot');
+        $cacheKey = 'stats:filters:' . $botId;
 
-        $payload = Cache::remember('stats:filters:' . $botId, self::LISTS_TTL, function () use ($botId) {
+        if ($request->boolean('refresh')) {
+            Cache::forget($cacheKey);
+        }
+
+        $payload = Cache::remember($cacheKey, self::LISTS_TTL, function () use ($botId) {
             $bot = Bots::findOrFail($botId);
             $db = BotDatabase::connect($bot);
 
@@ -99,12 +104,8 @@ class StatisticsController extends Controller
             // Карта имя_ссылки -> partner_id (partners.links — JSON-массив ИМЁН ссылок).
             $nameToPartner = [];
             foreach ($partners as $partner) {
-                $names = is_array($partner->links) ? $partner->links : json_decode((string) $partner->links, true);
-                if (!is_array($names)) {
-                    continue;
-                }
-                foreach ($names as $n) {
-                    $nameToPartner[(string) $n] = (int) $partner->id;
+                foreach ($this->decodeLinkNames($partner->links) as $n) {
+                    $nameToPartner[$n] = (int) $partner->id;
                 }
             }
 
@@ -114,7 +115,7 @@ class StatisticsController extends Controller
                 ->map(fn ($link) => [
                     'id'         => (int) $link->id,
                     'name'       => (string) $link->name,
-                    'contragent' => $nameToPartner[(string) $link->name] ?? null,
+                    'contragent' => $nameToPartner[trim((string) $link->name)] ?? null,
                 ])
                 ->all();
 
@@ -127,6 +128,38 @@ class StatisticsController extends Controller
         });
 
         return response()->json($payload);
+    }
+
+    /**
+     * Разбирает partners.links в массив имён ссылок.
+     * Терпим к форматам: массив, JSON-строка, двойная JSON-упаковка.
+     *
+     * @return string[]
+     */
+    private function decodeLinkNames($raw): array
+    {
+        $v = $raw;
+        if (is_string($v)) {
+            $v = json_decode($v, true);
+        }
+        if (is_string($v)) {              // вдруг двойная упаковка
+            $v = json_decode($v, true);
+        }
+        if (!is_array($v)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($v as $n) {
+            if (is_array($n)) {
+                continue;
+            }
+            $name = trim((string) $n);
+            if ($name !== '') {
+                $out[] = $name;
+            }
+        }
+        return $out;
     }
 
     /**
