@@ -448,10 +448,10 @@ class BotAnalyticsService
     {
         // Покупки, доход, пробные и PRO — одним запросом.
         $row = $this->purchasesQuery()->selectRaw(
-            'COUNT(*) AS purchases,
+            "COUNT(*) AS purchases,
              COALESCE(SUM(rub_summ), 0) AS revenue,
-             SUM(summ = 1) AS trial,
-             SUM(summ <> 1) AS pro'
+             SUM(summ = 1 AND sub <> 'tokens') AS trial,
+             SUM(sub = 'pro' AND summ <> 1) AS pro"
         )->first();
 
         $purchases  = (int) ($row->purchases ?? 0);
@@ -520,33 +520,52 @@ class BotAnalyticsService
     }
 
     /**
-     * Топ товаров. sub всегда = pro; товар различается типом
-     * (пробная / платная) и длительностью/ценой.
+     * Топ товаров. Тип товара берётся из payments.sub:
+     *   - подписка (pro / smart / …) — название типа + дни (или «пробная» при summ = 1);
+     *   - tokens — «Покупка N токенов», где N = payments.days.
      */
     private function topProducts(): array
     {
         return $this->purchasesQuery()
             ->selectRaw('
+                sub,
                 CASE WHEN summ = 1 THEN 1 ELSE 0 END as is_trial,
                 days,
                 rub_summ,
                 COUNT(*) as sold,
                 SUM(rub_summ) as revenue
             ')
-            ->groupBy('is_trial', 'days', 'rub_summ')
+            ->groupBy('sub', 'is_trial', 'days', 'rub_summ')
             ->orderByDesc('sold')
             ->limit(self::TOP_LIMIT)
             ->get()
-            ->map(function ($row) {
-                $isTrial = (int) $row->is_trial === 1;
-                return [
-                    'name'    => $isTrial ? 'PRO (пробная)' : 'PRO ' . (int) $row->days . ' дн.',
-                    'price'   => round((float) $row->rub_summ, 2),
-                    'sold'    => (int) $row->sold,
-                    'revenue' => round((float) $row->revenue, 2),
-                ];
-            })
+            ->map(fn ($row) => [
+                'name'    => $this->productName((string) $row->sub, (int) $row->is_trial === 1, (int) $row->days),
+                'price'   => round((float) $row->rub_summ, 2),
+                'sold'    => (int) $row->sold,
+                'revenue' => round((float) $row->revenue, 2),
+            ])
             ->all();
+    }
+
+    /** Название товара по типу подписки (sub) из payments. */
+    private function productName(string $sub, bool $isTrial, int $days): string
+    {
+        $sub = trim($sub);
+
+        // Покупка токенов: в days лежит количество токенов.
+        if (strcasecmp($sub, 'tokens') === 0) {
+            return 'Покупка ' . $days . ' токенов';
+        }
+
+        $name = match (mb_strtolower($sub)) {
+            'pro'   => 'PRO',
+            'smart' => 'Smart',
+            ''      => 'Подписка',
+            default => mb_convert_case($sub, MB_CASE_TITLE, 'UTF-8'),
+        };
+
+        return $isTrial ? "$name (пробная)" : "$name $days дн.";
     }
 
     // ------------------------------------------------------------------
