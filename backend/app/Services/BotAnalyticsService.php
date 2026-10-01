@@ -365,13 +365,16 @@ class BotAnalyticsService
         foreach ($rows as $r) {
             $c = (int) $r->c;
             $total += $c;
-            $cat = $this->queryCategory((string) $r->type);
+            $type = (string) $r->type;
+            $cat = $this->queryCategory($type);
             if ($cat === null) {
                 continue;
             }
             $byType[$cat] += $c;
-            $model = (string) $r->model;
-            $models[$cat][$model] = ($models[$cat][$model] ?? 0) + $c;
+            // Для редиректов топ строится по ТИПУ (редирект текст / изображение),
+            // а не по модели; для текста/фото — по модели.
+            $label = $cat === 'redirect' ? $this->redirectLabel($type) : (string) $r->model;
+            $models[$cat][$label] = ($models[$cat][$label] ?? 0) + $c;
         }
 
         $top = function (array $m) use ($total) {
@@ -396,6 +399,16 @@ class BotAnalyticsService
                 'redirect' => $top($models['redirect']),
             ],
         ];
+    }
+
+    /** Человекочитаемое имя типа редиректа для топ-списка. */
+    private function redirectLabel(string $type): string
+    {
+        return match ($type) {
+            'redirect_text'  => 'Текст',
+            'redirect_image' => 'Изображение',
+            default          => 'Редирект ' . trim(str_replace('redirect', '', $type), '_'),
+        };
     }
 
     /** Категория запроса по query_logs.type: text | image | redirect | null. */

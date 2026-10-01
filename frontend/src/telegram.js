@@ -13,6 +13,10 @@ export function initTelegram() {
     tg.ready()
     tg.expand()
 
+    // Отключаем вертикальные свайпы Telegram, из-за которых свайп вниз
+    // в любом месте сворачивал мини-апп (Bot API 7.7+).
+    if (tg.disableVerticalSwipes) tg.disableVerticalSwipes()
+
     // Подгоняем шапку и фон под светлую тему приложения.
     const bg = getComputedStyle(document.documentElement)
       .getPropertyValue('--color-bg').trim() || '#f3f2f2'

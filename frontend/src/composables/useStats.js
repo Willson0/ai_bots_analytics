@@ -17,6 +17,8 @@ function mapBars(series) {
   return arr.map((s, i) => ({
     h: Math.max(4, (s.count / max) * 100) + '%',
     c: i === arr.length - 1 ? 'var(--color-accent)' : 'var(--color-neutral-800)',
+    label: s.label,
+    count: s.count,
   }))
 }
 

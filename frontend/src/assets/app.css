@@ -1,5 +1,6 @@
 /* Глобальные стили экрана. Токены берутся из modernist.css. */
 
+html, body { overscroll-behavior: none; }
 body { margin: 0; background: var(--color-neutral-300); -webkit-font-smoothing: antialiased; }
 button { font: inherit; color: inherit; }
 a { color: var(--color-accent); }
