@@ -6,10 +6,7 @@ const emit = defineEmits(['open'])
 <template>
   <div class="stack">
     <div class="summary">
-      <span class="split">
-        <span class="kicker">Всего запросов к нейросетям</span>
-        <span class="delta" :style="{ color: ai.dColor }">{{ ai.delta }}</span>
-      </span>
+      <span class="kicker">Всего запросов к нейросетям</span>
       <span class="num num--lg">{{ ai.total }}</span>
       <span class="stacked">
         <span v-for="g in ai.groups" :key="g.name" :style="{ width: g.w, background: g.c }" />
@@ -36,7 +33,24 @@ const emit = defineEmits(['open'])
       </button>
     </template>
 
-    <p class="note">Процент — доля от всех запросов к нейросетям за выбранный период, включая фото и редиректы.</p>
+    <p class="note">Процент — доля от всех запросов к нейросетям (текст + фото) за период. Редиректы распределены по категориям: редирект-текст в «Текст», редирект-фото в «Фото».</p>
+
+    <!-- Отдельный блок: соотношение редиректов -->
+    <template v-if="ai.redirects">
+      <div class="section-head">
+        <span class="kicker kicker--strong">Редиректы</span>
+        <span class="muted">всего {{ ai.redirects.total }}</span>
+      </div>
+      <div v-for="r in ai.redirects.items" :key="r.name" class="row row--line model">
+        <span class="model-line">
+          <span class="model-name"><span class="dot" :style="{ background: r.c }" />{{ r.name }}</span>
+          <span class="model-v">{{ r.v }}</span>
+          <span class="model-pct">{{ r.pct }}</span>
+        </span>
+        <span class="meter"><span :style="{ width: r.w, background: r.c }" /></span>
+      </div>
+      <p class="note">Соотношение редиректов между текстом и изображениями (от общего числа редиректов).</p>
+    </template>
   </div>
 </template>
 
@@ -49,7 +63,8 @@ const emit = defineEmits(['open'])
 .swatch { width: 10px; height: 10px; }
 .model { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
 .model-line { display: grid; grid-template-columns: minmax(0, 1fr) auto 56px; gap: 12px; align-items: baseline; font-size: 14px; }
-.model-name { font-weight: 600; }
+.model-name { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; }
 .model-v { color: var(--color-neutral-700); }
 .model-pct { text-align: right; font-weight: 800; }
 </style>

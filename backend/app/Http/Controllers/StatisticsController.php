@@ -6,6 +6,7 @@ use App\Http\Requests\StatisticsGetRequest;
 use App\Models\Bots;
 use App\Services\BotAnalyticsService;
 use App\Services\BotDatabase;
+use App\Services\ManagerAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -27,12 +28,31 @@ class StatisticsController extends Controller
     {
         $data = $request->validated();
 
+        /** @var ManagerAccess $access */
+        $access = $request->attributes->get('access');
+
         $bot  = (int) $data['bot'];
         $time = (int) $data['time'];
+
+        if (!$access->canBot($bot)) {
+            abort(403, 'Нет доступа к этому боту');
+        }
 
         // contragent и link — массивы id (фильтр по объединению).
         $contragents = array_values(array_unique(array_map('intval', $data['contragent'] ?? [])));
         $links       = array_values(array_unique(array_map('intval', $data['link'] ?? [])));
+
+        // Ограничение по разрешённым контрагентам (если менеджер ограничен).
+        $scope = $access->contragentScope($bot);
+        if (is_array($scope)) {
+            $contragents = empty($contragents)
+                ? $scope                                  // нет выбора → только свои
+                : array_values(array_intersect($contragents, $scope));
+            if (empty($contragents)) {
+                $contragents = [-1]; // ничего не разрешено → пустая выборка
+            }
+        }
+
         sort($contragents);
         sort($links);
 
@@ -54,15 +74,33 @@ class StatisticsController extends Controller
             return (new BotAnalyticsService($model, $time, $contragents, $links))->collect();
         });
 
+        // Разделы, недоступные менеджеру, не отдаём.
+        $payload = $this->applySectionAccess($payload, $access);
+
         return response()->json($payload);
+    }
+
+    /** Обнуляет разделы ответа, недоступные менеджеру. */
+    private function applySectionAccess(array $payload, ManagerAccess $access): array
+    {
+        $map = ['gen' => 'users', 'ai' => 'queries', 'shop' => 'monetization', 'btn' => 'buttons'];
+        foreach ($map as $section => $key) {
+            if (!$access->canSection($section) && array_key_exists($key, $payload)) {
+                $payload[$key] = null;
+            }
+        }
+        return $payload;
     }
 
     /**
      * Список ботов для селектора.
      * GET /api/bots
      */
-    public function bots(): JsonResponse
+    public function bots(Request $request): JsonResponse
     {
+        /** @var ManagerAccess $access */
+        $access = $request->attributes->get('access');
+
         $bots = Cache::remember('stats:bots', self::LISTS_TTL, function () {
             return Bots::query()
                 ->orderBy('name')
@@ -74,6 +112,9 @@ class StatisticsController extends Controller
                 ])
                 ->all();
         });
+
+        // Только разрешённые менеджеру боты.
+        $bots = array_values(array_filter($bots, fn ($b) => $access->canBot((int) $b['id'])));
 
         return response()->json($bots);
     }
@@ -89,6 +130,13 @@ class StatisticsController extends Controller
         ]);
 
         $botId = $request->integer('bot');
+
+        /** @var ManagerAccess $access */
+        $access = $request->attributes->get('access');
+        if (!$access->canBot($botId)) {
+            abort(403, 'Нет доступа к этому боту');
+        }
+
         $cacheKey = 'stats:filters:' . $botId;
 
         if ($request->boolean('refresh')) {
@@ -135,6 +183,21 @@ class StatisticsController extends Controller
 
             return ['contragents' => $contragents, 'links' => $links];
         });
+
+        // Если менеджер ограничен контрагентами этого бота — показываем только их
+        // (и ссылки только этих контрагентов).
+        $scope = $access->contragentScope($botId);
+        if (is_array($scope)) {
+            $allowed = array_map('intval', $scope);
+            $payload['contragents'] = array_values(array_filter(
+                $payload['contragents'],
+                fn ($c) => in_array((int) $c['id'], $allowed, true)
+            ));
+            $payload['links'] = array_values(array_filter(
+                $payload['links'],
+                fn ($l) => $l['contragent'] !== null && in_array((int) $l['contragent'], $allowed, true)
+            ));
+        }
 
         return response()->json($payload);
     }

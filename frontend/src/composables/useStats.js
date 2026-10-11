@@ -8,6 +8,7 @@ const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('ru-RU')
 const money = (n) => fmt(n) + ' ₽'
 // Бэкенд отдаёт проценты числом (12.3) — форматируем в «12,3%».
 const pctNum = (p) => (Number(p) || 0).toFixed(1).replace('.', ',') + '%'
+const pctOf = (part, whole) => (whole > 0 ? (part / whole) * 100 : 0)
 const pad2 = (i) => String(i).padStart(2, '0')
 
 // Ряд для BarChart: [{ h: '42%', c }]. Последний столбец — акцентный.
@@ -49,6 +50,10 @@ export function useStats(props) {
   const updatedAt = ref(null)
   // Ключ выборки, по которой сейчас показаны данные (для «параметры изменились»).
   const loadedKey = ref(null)
+
+  // Текущий пользователь и его права
+  const access = ref(null)
+  const denied = ref(false)
 
   // ---------- загрузка ----------
 
@@ -126,13 +131,26 @@ export function useStats(props) {
   const reload = () => loadStats(true)
 
   // Статистика НЕ загружается автоматически — только по кнопке «Собрать».
-  // Автоматически подтягиваем лишь списки ботов и фильтров.
+  async function loadMe() {
+    try {
+      access.value = await apiGet('/me')
+      // Начальная вкладка — первая доступная.
+      const allowed = access.value?.sections || []
+      if (allowed.length && !allowed.includes(state.tab)) state.tab = allowed[0]
+    } catch (e) {
+      if (e.status === 401) denied.value = true
+      else error.value = e.message || 'Не удалось авторизоваться'
+      throw e
+    }
+  }
+
+  // Сначала авторизация, затем списки ботов/фильтров.
   onMounted(async () => {
     try {
-      // loadBots выставит state.bot, watch ниже подтянет фильтры.
+      await loadMe()
       await loadBots()
     } catch (e) {
-      error.value = e.message || 'Не удалось загрузить данные'
+      // ошибки уже разложены в denied/error
     }
   })
 
@@ -193,7 +211,14 @@ export function useStats(props) {
     return { ...p, from: s.length ? s[0].label : '', to: s.length ? s[s.length - 1].label : '' }
   })
   const periods = computed(() => PERIODS.map((p) => ({ k: p.k, label: p.label, active: p.k === state.period })))
-  const tabs = computed(() => TABS.map(([k, label]) => ({ k, label, active: k === state.tab })))
+  const tabs = computed(() => {
+    const allowed = access.value?.sections || null
+    return TABS
+      .filter(([k]) => !allowed || allowed.includes(k))
+      .map(([k, label]) => ({ k, label, active: k === state.tab }))
+  })
+  const isAdmin = computed(() => !!access.value?.is_admin)
+  const canGeneral = computed(() => !!access.value?.general)
 
   // ---------- Общее ----------
 
@@ -202,19 +227,47 @@ export function useStats(props) {
     const empty = { big: [], pair: [], refs: [] }
     if (!u) return empty
 
-    const ofNew = (m) => pctNum(m.percent) + ' новых юзеров'
+    const ofNew = (m) => pctNum(m.percent) + ' от новых'
+    const refs = u.referrals || {}
+    const refRow = (key, label, m, desc) => ({
+      key, label,
+      v: fmt(m.count), pct: pctNum(m.percent), w: (m.percent || 0) + '%',
+      delta: '', dColor: 'inherit',
+      detail: detail(label, fmt(m.count)),
+    })
+
     return {
       big: [
-        { key: 'act', label: 'Активные юзеры', v: fmt(u.active.total), sub: 'пользовались ботом за период', delta: '', dColor: 'inherit', series: mapBars(u.active.series), detail: detail('Активные юзеры', fmt(u.active.total), mapBars(u.active.series)) },
-        { key: 'new', label: 'Новые юзеры', v: fmt(u.new.total), sub: 'впервые запустили бота за период', delta: '', dColor: 'inherit', series: mapBars(u.new.series), detail: detail('Новые юзеры', fmt(u.new.total), mapBars(u.new.series)) },
+        {
+          key: 'act', label: 'Активные юзеры',
+          v: fmt(u.active.total),
+          sub: 'уникальные, кто сделал хотя бы 1 запрос к нейросети за период',
+          delta: '', dColor: 'inherit',
+          series: mapBars(u.active.series),
+          // Разбивка активных: новые (появились в периоде) / старые (были раньше).
+          breakdown: [
+            { label: 'Новые', hint: 'появились в базе за период', v: fmt(u.active.new), pct: pctNum(pctOf(u.active.new, u.active.total)) },
+            { label: 'Старые', hint: 'были в базе до периода', v: fmt(u.active.old), pct: pctNum(pctOf(u.active.old, u.active.total)) },
+          ],
+          detail: detail('Активные юзеры', fmt(u.active.total), mapBars(u.active.series)),
+        },
+        {
+          key: 'new', label: 'Новые юзеры',
+          v: fmt(u.new.total),
+          sub: 'впервые написали /start и появились в базе за период',
+          delta: '', dColor: 'inherit',
+          series: mapBars(u.new.series),
+          detail: detail('Новые юзеры', fmt(u.new.total), mapBars(u.new.series)),
+        },
       ],
       pair: [
-        { key: 'prem', label: 'С Telegram Premium', v: fmt(u.new_premium.count), sub: ofNew(u.new_premium), delta: '', dColor: 'inherit', detail: detail('Новые с Telegram Premium', fmt(u.new_premium.count)) },
-        { key: 'op', label: 'Подписались на ОП', v: fmt(u.subscribed_op.count), sub: ofNew(u.subscribed_op), delta: '', dColor: 'inherit', detail: detail('Подписались на ОП', fmt(u.subscribed_op.count)) },
+        { key: 'prem', label: 'С Telegram Premium', v: fmt(u.new_premium.count), sub: ofNew(u.new_premium) + ' новых с Premium', delta: '', dColor: 'inherit', detail: detail('Новые с Telegram Premium', fmt(u.new_premium.count)) },
+        { key: 'op', label: 'Подписались на ОП', v: fmt(u.subscribed_op.count), sub: ofNew(u.subscribed_op) + ' прошли обязательную подписку', delta: '', dColor: 'inherit', detail: detail('Подписались на ОП', fmt(u.subscribed_op.count)) },
       ],
       refs: [
-        { key: 'lref', label: 'По реф. ссылкам', v: fmt(u.from_referral_links.count), pct: pctNum(u.from_referral_links.percent), w: (u.from_referral_links.percent || 0) + '%', delta: '', dColor: 'inherit', detail: detail('Рефералы по реф. ссылкам', fmt(u.from_referral_links.count)) },
-        { key: 'uref', label: 'От пользователей', v: fmt(u.from_other_users.count), pct: pctNum(u.from_other_users.percent), w: (u.from_other_users.percent || 0) + '%', delta: '', dColor: 'inherit', detail: detail('Рефералы от пользователей', fmt(u.from_other_users.count)) },
+        refRow('lref', 'По реф. ссылкам', refs.links || { count: 0, percent: 0 }),
+        refRow('uref', 'От пользователей', refs.users || { count: 0, percent: 0 }),
+        refRow('unref', 'Неизвестно', refs.unknown || { count: 0, percent: 0 }),
       ],
     }
   })
@@ -223,7 +276,8 @@ export function useStats(props) {
 
   const ai = computed(() => {
     const q = data.value?.queries
-    if (!q) return { total: '0', delta: '', dColor: 'inherit', groups: [] }
+    const empty = { total: '0', delta: '', dColor: 'inherit', groups: [], redirects: null }
+    if (!q) return empty
 
     const allCounts = QUERY_GROUPS.flatMap((g) => (q.top_models?.[g.key] || []).map((m) => m.count))
     const maxM = Math.max(...allCounts, 1)
@@ -240,34 +294,56 @@ export function useStats(props) {
       return { name: g.name, c: g.c, v: fmt(bt.count), pct: pctNum(bt.percent), w: (bt.percent || 0) + '%', items }
     })
 
-    return { total: fmt(q.total), delta: '', dColor: 'inherit', groups }
+    // Отдельный блок редиректов: соотношение редирект-текст / редирект-фото.
+    const r = q.redirects || { total: 0, text: { count: 0, percent: 0 }, image: { count: 0, percent: 0 } }
+    const redirects = {
+      total: fmt(r.total),
+      items: [
+        { name: 'Текст', c: 'var(--color-text)', v: fmt(r.text.count), pct: pctNum(r.text.percent), w: (r.text.percent || 0) + '%' },
+        { name: 'Фото', c: 'var(--color-accent)', v: fmt(r.image.count), pct: pctNum(r.image.percent), w: (r.image.percent || 0) + '%' },
+      ],
+    }
+
+    return { total: fmt(q.total), delta: '', dColor: 'inherit', groups, redirects }
   })
 
   // ---------- Покупки ----------
 
   const shop = computed(() => {
     const m = data.value?.monetization
-    const empty = { kpis: [], subs: [], subsTotal: '0', trialRenew: '0,0%', trialRenewSub: '', count: '0', products: [] }
+    const empty = { revenue: [], counts: [], checks: [], perNew: '0 ₽', trialConv: null, trialToPro: null, products: [] }
     if (!m) return empty
 
-    const trial = m.trial_subs || { count: 0, percent: 0 }
-    const pro = m.pro_subs || { count: 0, percent: 0 }
+    const rev = m.revenue || { total: 0, new: 0, old: 0 }
+    const pur = m.purchases || { total: 0, one_time: 0, auto: 0 }
+    const chk = m.avg_check || { with_trial: 0, without_trial: 0 }
+    const tc = m.trial_conversion || { count: 0, percent: 0 }
     const t2p = m.trial_to_pro || { count: 0, percent: 0 }
-    const subsTotal = (trial.count || 0) + (pro.count || 0)
 
     return {
-      kpis: [
-        { key: 'chk', label: 'Средний чек', v: money(m.avg_check), sub: 'на одну покупку', delta: '', dColor: 'inherit', detail: detail('Средний чек', money(m.avg_check)) },
-        { key: 'start', label: 'Доход со старта', v: money(m.revenue_per_active), sub: 'доход за период / активные', delta: '', dColor: 'inherit', detail: detail('Доход со старта', money(m.revenue_per_active)) },
+      // Общая выручка + новые/старые
+      revenue: {
+        total: money(rev.total),
+        rows: [
+          { label: 'Новые', hint: 'стартовали в периоде', v: money(rev.new), detail: detail('Выручка — новые юзеры', money(rev.new)) },
+          { label: 'Старые', hint: 'стартовали до периода', v: money(rev.old), detail: detail('Выручка — старые юзеры', money(rev.old)) },
+        ],
+      },
+      // Кол-во покупок + разовые/авто
+      counts: {
+        total: fmt(pur.total),
+        rows: [
+          { label: 'Разовые', hint: 'самостоятельная покупка', v: fmt(pur.one_time), detail: detail('Разовые покупки', fmt(pur.one_time)) },
+          { label: 'Автопродления', hint: 'автоматическое списание', v: fmt(pur.auto), detail: detail('Автопродления', fmt(pur.auto)) },
+        ],
+      },
+      checks: [
+        { key: 'chk1', label: 'Средний чек', v: money(chk.with_trial), sub: 'с учётом пробных', detail: detail('Средний чек (с пробными)', money(chk.with_trial)) },
+        { key: 'chk2', label: 'Средний чек', v: money(chk.without_trial), sub: 'без учёта пробных', detail: detail('Средний чек (без пробных)', money(chk.without_trial)) },
       ],
-      subs: [
-        { name: 'Пробная', c: 'var(--color-neutral-500)', v: fmt(trial.count), pct: pctNum(trial.percent), detail: detail('Пробные подписки', fmt(trial.count)) },
-        { name: 'PRO', c: 'var(--color-accent)', v: fmt(pro.count), pct: pctNum(pro.percent), detail: detail('PRO подписки', fmt(pro.count)) },
-      ],
-      subsTotal: fmt(subsTotal),
-      trialRenew: pctNum(t2p.percent),
-      trialRenewSub: fmt(t2p.count) + ' из ' + fmt(trial.count) + ' перешли на платную',
-      count: fmt(m.purchases || 0),
+      perNew: money(m.revenue_per_new_start),
+      trialConv: { v: fmt(tc.count), pct: pctNum(tc.percent) },
+      trialToPro: { pct: pctNum(t2p.percent), sub: fmt(t2p.count) + ' из ' + fmt(t2p.base != null ? t2p.base : 0) + ' купивших пробную перешли на PRO' },
       products: (m.top_products || []).map((p) => ({
         name: p.name,
         v: fmt(p.sold),
@@ -421,6 +497,7 @@ export function useStats(props) {
     period, periods, tabs, gen, ai, shop, btn, filters, sheet,
     botPlatform, botLabel, status, loading, error, reload,
     build, hasData, dirty,
+    access, denied, isAdmin, canGeneral,
     setPeriod, setTab, openSheet, openDetail, closeSheet, resetFilters, pickOption,
   }
 }

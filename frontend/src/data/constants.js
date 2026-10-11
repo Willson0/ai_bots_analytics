@@ -9,11 +9,11 @@ export const PERIODS = [
   { k: 'all', time: 0,  label: 'Всё время', long: 'за всё время' },
 ]
 
-// Категории запросов к нейросети и их цвета (совпадают с бэкендом: text/image/redirect).
+// Категории запросов к нейросети и их цвета. Редиректы вынесены в отдельный
+// блок, в основной счётчик входят только text + image (= 100%).
 export const QUERY_GROUPS = [
-  { key: 'text',     name: 'Текст',     c: 'var(--color-text)' },
-  { key: 'image',    name: 'Фото',      c: 'var(--color-accent)' },
-  { key: 'redirect', name: 'Редиректы', c: 'var(--color-neutral-500)' },
+  { key: 'text',  name: 'Текст', c: 'var(--color-text)' },
+  { key: 'image', name: 'Фото',  c: 'var(--color-accent)' },
 ]
 
 export const TABS = [['gen', 'Общее'], ['ai', 'Нейросети'], ['shop', 'Покупки'], ['btn', 'Кнопки']]

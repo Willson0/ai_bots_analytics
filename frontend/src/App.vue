@@ -1,10 +1,12 @@
 <script setup>
+import { ref } from 'vue'
 import { useStats } from './composables/useStats'
 import GeneralTab from './components/GeneralTab.vue'
 import AiTab from './components/AiTab.vue'
 import ShopTab from './components/ShopTab.vue'
 import ButtonsTab from './components/ButtonsTab.vue'
 import BottomSheet from './components/BottomSheet.vue'
+import ManagersPage from './components/ManagersPage.vue'
 
 // Бывшие настройки редактора (data-props): «Отображение»
 const props = defineProps({
@@ -15,20 +17,34 @@ const props = defineProps({
 const {
   state, period, periods, tabs, gen, ai, shop, btn, filters, sheet, botPlatform, botLabel, status,
   loading, error, reload, build, hasData, dirty,
+  access, denied, isAdmin,
   setPeriod, setTab, openSheet, openDetail, closeSheet, resetFilters, pickOption,
 } = useStats(props)
 
 const chevron = 'm6 9 6 6 6-6'
+const view = ref('dashboard') // 'dashboard' | 'managers'
 </script>
 
 <template>
   <div class="shell">
+    <!-- Нет доступа -->
+    <div v-if="denied" class="denied">
+      <span class="state-title">Нет доступа</span>
+      <span class="state-sub">Этот аккаунт не добавлен в список менеджеров. Обратитесь к администратору.</span>
+    </div>
+
+    <!-- Страница менеджеров (для админа) -->
+    <ManagersPage v-else-if="view === 'managers'" @close="view = 'dashboard'" />
+
+    <!-- Основной дашборд -->
+    <template v-else>
     <!-- Нативную шапку (кнопка закрытия, заголовок) рисует сам Telegram -->
     <div class="hero">
       <span class="hero-kicker">Панель администратора</span>
       <h1 class="hero-title">Статистика</h1>
       <span class="status-line muted">
         <span class="ellipsis">{{ status }}</span>
+        <button v-if="isAdmin" class="mgr-link" type="button" title="Менеджеры" @click="view = 'managers'">Менеджеры</button>
         <button class="refresh" type="button" :disabled="loading" title="Обновить данные" @click="reload">↻</button>
       </span>
     </div>
@@ -143,6 +159,7 @@ const chevron = 'm6 9 6 6 6-6'
       :axis-from="period.from" :axis-to="period.to"
       @close="closeSheet" @pick="pickOption"
     />
+    </template>
   </div>
 </template>
 
@@ -226,8 +243,12 @@ const chevron = 'm6 9 6 6 6-6'
 .bot-picker:disabled:hover { background: var(--color-surface); }
 .filter:disabled:hover { background: transparent; }
 
+/* нет доступа */
+.denied { padding: 48px 24px; display: flex; flex-direction: column; gap: 10px; align-items: center; text-align: center; min-height: 60vh; justify-content: center; }
+
 /* статус + кнопка обновления */
 .status-line { display: flex; align-items: center; gap: 8px; }
+.mgr-link { border: 0; background: transparent; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; color: var(--color-accent-700); text-decoration: underline; text-underline-offset: 3px; }
 .refresh {
   border: 0; background: transparent; cursor: pointer; color: var(--color-accent-700);
   font-size: 16px; line-height: 1; padding: 2px 4px;
