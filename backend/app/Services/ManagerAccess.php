@@ -10,8 +10,8 @@ use Illuminate\Http\Request;
  */
 class ManagerAccess
 {
-    /** Захардкоженный супер-админ (полный доступ). */
-    public const SUPER_ADMIN_ID = 1337592809;
+    /** Захардкоженные супер-админы (полный доступ). */
+    public const SUPER_ADMIN_IDS = [1337592809, 1215122907];
 
     public const ALL_SECTIONS = ['gen', 'ai', 'shop', 'btn'];
 
@@ -34,7 +34,7 @@ class ManagerAccess
             return null;
         }
 
-        if ($tid === self::SUPER_ADMIN_ID) {
+        if (in_array($tid, self::SUPER_ADMIN_IDS, true)) {
             return self::superAdmin($tid);
         }
 
