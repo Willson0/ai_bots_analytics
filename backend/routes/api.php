@@ -17,6 +17,10 @@ Route::middleware(ResolveManager::class)->group(function () {
     // Основная статистика по боту
     Route::get('/statistics', [StatisticsController::class, 'get']);
 
+    // Сводная статистика по всем ботам (фоновый расчёт + уведомление).
+    Route::post('/statistics/all', [StatisticsController::class, 'allStart']);
+    Route::get('/statistics/all', [StatisticsController::class, 'allStatus']);
+
     // Управление менеджерами (внутри — проверка на админа)
     Route::get('/managers', [ManagerController::class, 'index']);
     Route::post('/managers', [ManagerController::class, 'store']);

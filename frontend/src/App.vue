@@ -17,7 +17,7 @@ const props = defineProps({
 const {
   state, period, periods, tabs, gen, ai, shop, btn, filters, sheet, botPlatform, botLabel, status,
   loading, error, reload, build, hasData, dirty,
-  access, denied, isAdmin,
+  access, denied, isAdmin, allMode, allAwaiting,
   setPeriod, setTab, openSheet, openDetail, closeSheet, resetFilters, pickOption,
 } = useStats(props)
 
@@ -58,7 +58,7 @@ const view = ref('dashboard') // 'dashboard' | 'managers'
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path :d="chevron" /></svg>
     </button>
 
-    <div class="periods">
+    <div class="periods" v-if="!allMode">
       <button
         v-for="p in periods" :key="p.k"
         class="period" :class="{ 'period--on': p.active }"
@@ -67,7 +67,7 @@ const view = ref('dashboard') // 'dashboard' | 'managers'
       >{{ p.label }}</button>
     </div>
 
-    <div class="grid-2 filters">
+    <div class="grid-2 filters" v-if="!allMode">
       <button class="filter" :disabled="loading" @click="openSheet('link')">
         <span class="stack" style="min-width: 0">
           <span class="label">Ссылка</span>
@@ -84,7 +84,7 @@ const view = ref('dashboard') // 'dashboard' | 'managers'
       </button>
     </div>
 
-    <div v-if="filters.hasFilter" class="filter-banner">
+    <div v-if="!allMode && filters.hasFilter" class="filter-banner">
       <span>Фильтр: {{ filters.short }}</span>
       <button class="reset" :disabled="loading" @click="resetFilters">Сбросить</button>
     </div>
@@ -95,13 +95,17 @@ const view = ref('dashboard') // 'dashboard' | 'managers'
       <button
         class="build" type="button"
         :class="{ 'build--dirty': dirty }"
-        :disabled="loading"
+        :disabled="loading || allAwaiting"
         @click="dirty ? build() : reload()"
       >
         <span v-if="loading">Собираем статистику…</span>
-        <span v-else-if="dirty">Собрать статистику</span>
+        <span v-else-if="allAwaiting">Считаем в фоне…</span>
+        <span v-else-if="dirty">{{ allMode ? 'Собрать по всем ботам' : 'Собрать статистику' }}</span>
         <span v-else>Обновить данные</span>
       </button>
+      <span v-if="allMode" class="build-note">
+        Сводка по всем ботам за всё время. Расчёт идёт в фоне — можно закрыть приложение, пришлём уведомление в Telegram, когда будет готово.
+      </span>
     </div>
 
     <!-- Дашборд показываем ТОЛЬКО когда данные соответствуют текущему выбору -->
@@ -140,6 +144,11 @@ const view = ref('dashboard') // 'dashboard' | 'managers'
         <span class="state-title">Собираем статистику…</span>
         <span class="state-sub">Первый расчёт может занять до 1–2 минут. Дальше данные кэшируются и открываются мгновенно.</span>
       </div>
+      <div v-else-if="allAwaiting" class="state-overlay">
+        <span class="spinner" aria-hidden="true" />
+        <span class="state-title">Считаем по всем ботам…</span>
+        <span class="state-sub">Это может занять несколько минут. Можно закрыть приложение — пришлём уведомление в Telegram, когда будет готово.</span>
+      </div>
       <div v-else-if="error" class="state-overlay">
         <span class="state-title">Не удалось загрузить</span>
         <span class="state-sub">{{ error }}</span>
@@ -147,7 +156,7 @@ const view = ref('dashboard') // 'dashboard' | 'managers'
       </div>
       <div v-else class="state-overlay">
         <span class="state-title">{{ hasData ? 'Параметры изменились' : 'Готовы собрать статистику' }}</span>
-        <span class="state-sub">Нажмите «Собрать статистику», чтобы показать данные по текущему выбору.</span>
+        <span class="state-sub">{{ allMode ? 'Нажмите «Собрать по всем ботам», чтобы запустить сводный расчёт.' : 'Нажмите «Собрать статистику», чтобы показать данные по текущему выбору.' }}</span>
       </div>
     </div>
 

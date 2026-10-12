@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StatisticsGetRequest;
+use App\Jobs\ComputeAllBotsStats;
+use App\Models\AllBotsReport;
 use App\Models\Bots;
 use App\Services\BotAnalyticsService;
 use App\Services\BotDatabase;
@@ -15,6 +17,9 @@ class StatisticsController extends Controller
 {
     /** Список ботов / фильтры меняются редко — кэшируем на 10 минут. */
     private const LISTS_TTL = 600;
+
+    /** Сколько считать готовый сводный отчёт «свежим» (сек). */
+    private const ALL_FRESH_TTL = 3600;
 
     /**
      * Статистика по боту за период с учётом фильтров.
@@ -78,6 +83,105 @@ class StatisticsController extends Controller
         $payload = $this->applySectionAccess($payload, $access);
 
         return response()->json($payload);
+    }
+
+    /**
+     * Запуск сводной статистики по всем доступным ботам (в фоне).
+     * POST /api/statistics/all[?refresh=1]
+     *
+     * Если свежий отчёт уже готов — вернём его сразу. Иначе ставим задачу в
+     * очередь и отвечаем status=queued; по готовности менеджеру придёт
+     * уведомление в Telegram, можно закрыть приложение.
+     */
+    public function allStart(Request $request): JsonResponse
+    {
+        /** @var ManagerAccess $access */
+        $access = $request->attributes->get('access');
+        if (!$access->canGeneral()) {
+            abort(403, 'Нет доступа к общей статистике');
+        }
+
+        $ids = $this->accessibleBotIds($access);
+        if (empty($ids)) {
+            return response()->json(['status' => 'error', 'message' => 'Нет доступных ботов']);
+        }
+
+        $key    = $this->allCacheKey($ids);
+        $force  = $request->boolean('refresh');
+        $report = AllBotsReport::where('cache_key', $key)->first();
+
+        // Готовый и ещё свежий отчёт — отдаём мгновенно.
+        if (!$force && $report && $report->status === 'ready'
+            && $report->generated_at && $report->generated_at->gt(now()->subSeconds(self::ALL_FRESH_TTL))) {
+            return response()->json($this->presentReport($report, $access));
+        }
+
+        // Уже считается (недавно поставлен в очередь) — не плодим задачи.
+        if (!$force && $report && $report->status === 'queued'
+            && $report->updated_at && $report->updated_at->gt(now()->subMinutes(20))) {
+            return response()->json(['status' => 'queued']);
+        }
+
+        AllBotsReport::updateOrCreate(
+            ['cache_key' => $key],
+            ['status' => 'queued', 'message' => null]
+        );
+        ComputeAllBotsStats::dispatch($ids, (int) $access->telegramId, $key);
+
+        return response()->json(['status' => 'queued']);
+    }
+
+    /**
+     * Текущее состояние сводного отчёта (для опроса фронтом).
+     * GET /api/statistics/all
+     */
+    public function allStatus(Request $request): JsonResponse
+    {
+        /** @var ManagerAccess $access */
+        $access = $request->attributes->get('access');
+        if (!$access->canGeneral()) {
+            abort(403, 'Нет доступа к общей статистике');
+        }
+
+        $ids    = $this->accessibleBotIds($access);
+        $key    = $this->allCacheKey($ids);
+        $report = AllBotsReport::where('cache_key', $key)->first();
+
+        if (!$report) {
+            return response()->json(['status' => 'none']);
+        }
+        return response()->json($this->presentReport($report, $access));
+    }
+
+    /** Приводит отчёт к ответу API (с учётом доступа к разделам). */
+    private function presentReport(AllBotsReport $report, ManagerAccess $access): array
+    {
+        $out = [
+            'status'       => $report->status,
+            'generated_at' => optional($report->generated_at)->toIso8601String(),
+        ];
+        if ($report->status === 'ready' && is_array($report->payload)) {
+            $out['data'] = $this->applySectionAccess($report->payload, $access);
+        }
+        if ($report->status === 'error') {
+            $out['message'] = $report->message;
+        }
+        return $out;
+    }
+
+    /** id всех ботов, доступных менеджеру (для сводной статистики). */
+    private function accessibleBotIds(ManagerAccess $access): array
+    {
+        $all = Bots::query()->orderBy('id')->pluck('id')->map(fn ($i) => (int) $i)->all();
+        return array_values(array_filter($all, fn ($id) => $access->canBot((int) $id)));
+    }
+
+    /** Ключ отчёта — подпись набора ботов (не зависит от порядка). */
+    private function allCacheKey(array $ids): string
+    {
+        $ids = array_map('intval', $ids);
+        sort($ids);
+        return 'all:' . md5(implode('_', $ids));
     }
 
     /** Обнуляет разделы ответа, недоступные менеджеру. */

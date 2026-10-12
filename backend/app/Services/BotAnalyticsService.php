@@ -30,10 +30,10 @@ class BotAnalyticsService
     private const TZ = 'Europe/Moscow';
 
     /** Кол-во бакетов для режима "всё время" (time = 0). */
-    private const ALL_TIME_BUCKETS = 24;
+    public const ALL_TIME_BUCKETS = 24;
 
     /** Сколько позиций показывать в топах. */
-    private const TOP_LIMIT = 10;
+    public const TOP_LIMIT = 10;
 
     private Connection $db;
 
@@ -48,6 +48,12 @@ class BotAnalyticsService
     private int $bucketWidth = 0;
 
     /**
+     * Принудительный период (общий для всех ботов при сводной статистике).
+     * ['from'=>Carbon,'to'=>Carbon,'granularity'=>string,'bucketWidth'=>int]
+     */
+    private ?array $forcePeriod = null;
+
+    /**
      * Имена ссылок (links.name), которыми ограничена выборка пользователей.
      * null — фильтр не задан (учитываем всех).
      */
@@ -57,10 +63,11 @@ class BotAnalyticsService
      * @param int[] $contragents id контрагентов (partners) — фильтр по объединению
      * @param int[] $links        id ссылок (links) — фильтр по объединению
      */
-    public function __construct(Bots $bot, int $time, array $contragents = [], array $links = [])
+    public function __construct(Bots $bot, int $time, array $contragents = [], array $links = [], ?array $forcePeriod = null)
     {
         $this->db = BotDatabase::connect($bot);
         $this->time = $time;
+        $this->forcePeriod = $forcePeriod;
 
         $this->resolvePeriod();
         $this->resolveUserFilter($contragents, $links);
@@ -72,6 +79,16 @@ class BotAnalyticsService
 
     private function resolvePeriod(): void
     {
+        // Сводная статистика: период задан извне и одинаков для всех ботов,
+        // чтобы бакеты графика совпадали и их можно было суммировать.
+        if ($this->forcePeriod !== null) {
+            $this->from        = $this->forcePeriod['from'];
+            $this->to          = $this->forcePeriod['to'];
+            $this->granularity = $this->forcePeriod['granularity'];
+            $this->bucketWidth = (int) ($this->forcePeriod['bucketWidth'] ?? 0);
+            return;
+        }
+
         $now = Carbon::now(self::TZ);
         $this->to = $now->copy();
 
@@ -302,6 +319,38 @@ class BotAnalyticsService
         ];
     }
 
+    /**
+     * Сырые агрегаты по одному боту для сводной статистики.
+     * Все величины — абсолютные числа (без процентов и средних): их суммирует
+     * агрегатор по всем ботам, а проценты/чеки пересчитывает в самом конце.
+     * Ряды (active_series / new_series) выровнены по общим бакетам периода.
+     */
+    public function rawTotals(): array
+    {
+        $active    = $this->activeBreakdown();                           // total,new,old,series[{label,count}]
+        $agg       = $this->newUsersAggregates();                        // new_total,premium,op,ref_*
+        $newSeries = $this->seriesFor('users', 'created_at', false);     // [{label,count}]
+        $q         = $this->queriesRaw();
+        $m         = $this->monetizationRaw();
+        $products  = $this->topProductsRaw();
+
+        return [
+            'buckets'       => array_map(fn ($b) => $b['label'], $this->buckets()),
+            'active'        => ['total' => $active['total'], 'new' => $active['new'], 'old' => $active['old']],
+            'active_series' => array_map(fn ($p) => (int) $p['count'], $active['series']),
+            'new_series'    => array_map(fn ($p) => (int) $p['count'], $newSeries),
+            'new_total'     => $agg['new_total'],
+            'premium'       => $agg['premium'],
+            'op'            => $agg['op'],
+            'ref_links'     => $agg['ref_links'],
+            'ref_users'     => $agg['ref_users'],
+            'ref_unknown'   => $agg['ref_unknown'],
+            'q'             => $q,
+            'm'             => $m,
+            'products'      => $products,
+        ];
+    }
+
     // ------------------------------------------------------------------
     // Пользователи
     // ------------------------------------------------------------------
@@ -398,18 +447,58 @@ class BotAnalyticsService
      */
     private function queries(): array
     {
+        $raw = $this->queriesRaw();
+        $total = $raw['total'];
+
+        $top = function (array $m) use ($total) {
+            arsort($m);
+            $out = [];
+            foreach (array_slice($m, 0, self::TOP_LIMIT, true) as $model => $c) {
+                $out[] = ['model' => $model, 'count' => $c, 'percent' => $this->pct($c, $total)];
+            }
+            return $out;
+        };
+
+        $redTotal = $raw['red_text'] + $raw['red_image'];
+
+        return [
+            'total'   => $total,
+            'by_type' => [
+                'text'  => ['count' => $raw['text'],  'percent' => $this->pct($raw['text'], $total)],
+                'image' => ['count' => $raw['image'], 'percent' => $this->pct($raw['image'], $total)],
+            ],
+            'top_models' => [
+                'text'  => $top($raw['models_text']),
+                'image' => $top($raw['models_image']),
+            ],
+            // Отдельный блок: соотношение редиректов (от общего числа редиректов).
+            'redirects' => [
+                'total' => $redTotal,
+                'text'  => ['count' => $raw['red_text'],  'percent' => $this->pct($raw['red_text'], $redTotal)],
+                'image' => ['count' => $raw['red_image'], 'percent' => $this->pct($raw['red_image'], $redTotal)],
+            ],
+        ];
+    }
+
+    /**
+     * Сырые числа по query_logs — одним группирующим запросом (type, model).
+     * Редиректы сворачиваются в основные категории: redirect_text -> Текст,
+     * redirect_image -> Фото; плюс отдельно считаются сами редиректы.
+     * Используется и для презентации (queries()), и для сводной статистики.
+     *
+     * @return array{total:int,text:int,image:int,models_text:array,models_image:array,red_text:int,red_image:int}
+     */
+    private function queriesRaw(): array
+    {
         $rows = $this->queryLogsBase()
             ->selectRaw('type, model, COUNT(*) AS c')
             ->groupBy('type', 'model')
             ->get();
 
-        // Редиректы считаем в основные категории:
-        //   redirect_text -> Текст, redirect_image -> Фото.
-        // Основной счётчик (text + image) даёт 100%.
         $total = 0;
         $byType = ['text' => 0, 'image' => 0];
         $models = ['text' => [], 'image' => []];
-        $red = ['text' => 0, 'image' => 0]; // отдельно — только редиректы
+        $red = ['text' => 0, 'image' => 0];
 
         foreach ($rows as $r) {
             $c = (int) $r->c;
@@ -435,33 +524,14 @@ class BotAnalyticsService
             $models[$cat][$model] = ($models[$cat][$model] ?? 0) + $c;
         }
 
-        $top = function (array $m) use ($total) {
-            arsort($m);
-            $out = [];
-            foreach (array_slice($m, 0, self::TOP_LIMIT, true) as $model => $c) {
-                $out[] = ['model' => $model, 'count' => $c, 'percent' => $this->pct($c, $total)];
-            }
-            return $out;
-        };
-
-        $redTotal = $red['text'] + $red['image'];
-
         return [
-            'total'   => $total,
-            'by_type' => [
-                'text'  => ['count' => $byType['text'],  'percent' => $this->pct($byType['text'], $total)],
-                'image' => ['count' => $byType['image'], 'percent' => $this->pct($byType['image'], $total)],
-            ],
-            'top_models' => [
-                'text'  => $top($models['text']),
-                'image' => $top($models['image']),
-            ],
-            // Отдельный блок: соотношение редиректов (от общего числа редиректов).
-            'redirects' => [
-                'total' => $redTotal,
-                'text'  => ['count' => $red['text'],  'percent' => $this->pct($red['text'], $redTotal)],
-                'image' => ['count' => $red['image'], 'percent' => $this->pct($red['image'], $redTotal)],
-            ],
+            'total'        => $total,
+            'text'         => $byType['text'],
+            'image'        => $byType['image'],
+            'models_text'  => $models['text'],
+            'models_image' => $models['image'],
+            'red_text'     => $red['text'],
+            'red_image'    => $red['image'],
         ];
     }
 
@@ -480,10 +550,43 @@ class BotAnalyticsService
 
     private function monetization(int $newTotal): array
     {
+        $r = $this->monetizationRaw();
+
+        return [
+            'revenue' => [
+                'total' => round($r['revenue'], 2),
+                'new'   => round($r['rev_new'], 2),
+                'old'   => round($r['rev_old'], 2),
+            ],
+            'purchases' => [
+                'total'    => $r['purchases'],
+                'one_time' => $r['one_time'],
+                'auto'     => $r['auto'],
+            ],
+            'avg_check' => [
+                'with_trial'    => $r['purchases'] > 0 ? round($r['revenue'] / $r['purchases'], 2) : 0.0,
+                'without_trial' => $r['cnt_paid'] > 0 ? round($r['rev_paid'] / $r['cnt_paid'], 2) : 0.0,
+            ],
+            // Доход со старта = выручка новых юзеров / кол-во новых юзеров.
+            'revenue_per_new_start' => $newTotal > 0 ? round($r['rev_new'] / $newTotal, 2) : 0.0,
+            // Конверсия в пробную = новые юзеры, купившие пробную / все новые.
+            'trial_conversion' => ['count' => $r['trial_conv_count'], 'percent' => $this->pct($r['trial_conv_count'], $newTotal)],
+            'trial_to_pro'     => ['count' => $r['trial_to_pro_count'], 'base' => $r['trial_base'], 'percent' => $this->pct($r['trial_to_pro_count'], $r['trial_base'])],
+            'top_products'     => $this->topProducts(),
+        ];
+    }
+
+    /**
+     * Сырые числа по монетизации — одним запросом с JOIN на users + подзапросы
+     * по пробным. Используется и для презентации (monetization()), и для сводной
+     * статистики (суммирование по ботам, проценты/чеки пересчитываются после).
+     *
+     * @return array{purchases:int,revenue:float,rev_new:float,rev_old:float,one_time:int,auto:int,rev_paid:float,cnt_paid:int,trial_conv_count:int,trial_base:int,trial_to_pro_count:int}
+     */
+    private function monetizationRaw(): array
+    {
         $from = $this->fromStr();
 
-        // Выручка (вся / новые / старые), кол-во покупок (разовые / авто),
-        // данные для среднего чека без пробной — одним запросом с JOIN на users.
         $q = $this->db->table('payments as p')
             ->join('users as u', 'u.id', '=', 'p.user_id')
             ->where('p.is_bought', 1)
@@ -502,46 +605,27 @@ class BotAnalyticsService
             [$from, $from]
         )->first();
 
-        $purchases = (int) ($row->purchases ?? 0);
-        $revenue   = (float) ($row->revenue ?? 0);
-        $revNew    = (float) ($row->rev_new ?? 0);
-        $revOld    = (float) ($row->rev_old ?? 0);
-        $oneTime   = (int) ($row->one_time ?? 0);
-        $autoRenew = (int) ($row->auto_renew ?? 0);
-        $revPaid   = (float) ($row->rev_paid ?? 0);
-        $cntPaid   = (int) ($row->cnt_paid ?? 0);
-
-        $trialConv = $this->trialConversion($newTotal);
+        $tp = $this->trialToPro();
 
         return [
-            'revenue' => [
-                'total' => round($revenue, 2),
-                'new'   => round($revNew, 2),
-                'old'   => round($revOld, 2),
-            ],
-            'purchases' => [
-                'total'    => $purchases,
-                'one_time' => $oneTime,
-                'auto'     => $autoRenew,
-            ],
-            'avg_check' => [
-                'with_trial'    => $purchases > 0 ? round($revenue / $purchases, 2) : 0.0,
-                'without_trial' => $cntPaid > 0 ? round($revPaid / $cntPaid, 2) : 0.0,
-            ],
-            // Доход со старта = выручка новых юзеров / кол-во новых юзеров.
-            'revenue_per_new_start' => $newTotal > 0 ? round($revNew / $newTotal, 2) : 0.0,
-            // Конверсия в пробную = новые юзеры, купившие пробную / все новые.
-            'trial_conversion' => $trialConv,
-            'trial_to_pro'     => $this->trialToPro(),
-            'top_products'     => $this->topProducts(),
+            'purchases'          => (int) ($row->purchases ?? 0),
+            'revenue'            => (float) ($row->revenue ?? 0),
+            'rev_new'            => (float) ($row->rev_new ?? 0),
+            'rev_old'            => (float) ($row->rev_old ?? 0),
+            'one_time'           => (int) ($row->one_time ?? 0),
+            'auto'               => (int) ($row->auto_renew ?? 0),
+            'rev_paid'           => (float) ($row->rev_paid ?? 0),
+            'cnt_paid'           => (int) ($row->cnt_paid ?? 0),
+            'trial_conv_count'   => $this->trialConversionCount(),
+            'trial_base'         => $tp['base'],
+            'trial_to_pro_count' => $tp['count'],
         ];
     }
 
     /**
-     * Конверсия в пробную: уникальные новые юзеры (started в периоде),
-     * купившие пробную (summ = 1), делёные на всех новых.
+     * Уникальные новые юзеры (started в периоде), купившие пробную (summ = 1).
      */
-    private function trialConversion(int $newTotal): array
+    private function trialConversionCount(): int
     {
         $from = $this->fromStr();
 
@@ -552,9 +636,7 @@ class BotAnalyticsService
             ->whereBetween('u.created_at', [$from, $this->toStr()]);
         $this->applyLinkFilterColumn($q, 'u.link');
 
-        $count = (int) $q->distinct()->count('p.user_id');
-
-        return ['count' => $count, 'percent' => $this->pct($count, $newTotal)];
+        return (int) $q->distinct()->count('p.user_id');
     }
 
     /** Базовый запрос по покупкам за период (с фильтром). */
@@ -636,6 +718,41 @@ class BotAnalyticsService
                 'revenue' => round((float) $row->revenue, 2),
             ])
             ->all();
+    }
+
+    /**
+     * Сырой список товаров БЕЗ ограничения по количеству, сгруппированный по
+     * названию+цене — чтобы агрегатор мог слить одинаковые товары разных ботов
+     * и уже потом взять топ.
+     *
+     * @return array<string,array{name:string,price:float,sold:int,revenue:float}>
+     */
+    private function topProductsRaw(): array
+    {
+        $rows = $this->purchasesQuery()
+            ->selectRaw('
+                sub,
+                CASE WHEN summ = 1 THEN 1 ELSE 0 END as is_trial,
+                days,
+                rub_summ,
+                COUNT(*) as sold,
+                SUM(rub_summ) as revenue
+            ')
+            ->groupBy('sub', 'is_trial', 'days', 'rub_summ')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $name  = $this->productName((string) $row->sub, (int) $row->is_trial === 1, (int) $row->days);
+            $price = round((float) $row->rub_summ, 2);
+            $key   = $name . '|' . $price;
+            if (!isset($out[$key])) {
+                $out[$key] = ['name' => $name, 'price' => $price, 'sold' => 0, 'revenue' => 0.0];
+            }
+            $out[$key]['sold']    += (int) $row->sold;
+            $out[$key]['revenue'] += (float) $row->revenue;
+        }
+        return $out;
     }
 
     /** Название товара по типу подписки (sub) из payments. */

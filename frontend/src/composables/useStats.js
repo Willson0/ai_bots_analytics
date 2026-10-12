@@ -1,6 +1,10 @@
-import { reactive, ref, computed, watch, onMounted } from 'vue'
+import { reactive, ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { PERIODS, QUERY_GROUPS, TABS } from '../data/constants'
-import { apiGet } from '../api'
+import { apiGet, apiSend } from '../api'
+
+// Сентинел «Все боты» (сводная статистика). Намеренно не 'all',
+// чтобы не пересекаться с 'all' в фильтрах ссылок/контрагентов.
+const ALL_BOTS = '__all__'
 
 // ---------- форматирование ----------
 
@@ -55,12 +59,18 @@ export function useStats(props) {
   const access = ref(null)
   const denied = ref(false)
 
+  // Сводная статистика по всем ботам (фоновый расчёт).
+  const allAwaiting = ref(false) // идёт расчёт в фоне — ждём уведомление
+  let allPollTimer = null
+  const allMode = computed(() => state.bot === ALL_BOTS)
+
   // ---------- загрузка ----------
 
   // Клиентский кэш уже загруженных комбинаций (бот|период|контрагент|ссылка),
   // чтобы переключение назад показывало данные мгновенно, без нового запроса.
   const cacheStore = new Map()
   const cacheKey = () => {
+    if (state.bot === ALL_BOTS) return 'all' // сводка: без периода и фильтров
     const lks = [...state.linkSel].sort((a, b) => a - b).join('_')
     return `${state.bot}|${state.period}|${state.cp ?? ''}|${lks}`
   }
@@ -125,10 +135,75 @@ export function useStats(props) {
     }
   }
 
-  // Собрать статистику по текущей выборке (по кнопке). Использует кэш.
-  const build = () => loadStats(false)
-  // Принудительное обновление текущей выборки (мимо кэша фронта и сервера).
-  const reload = () => loadStats(true)
+  // ---------- сводная статистика по всем ботам ----------
+
+  function stopAllPoll() {
+    if (allPollTimer) { clearInterval(allPollTimer); allPollTimer = null }
+  }
+
+  function applyAll(res) {
+    data.value = res.data
+    updatedAt.value = res.generated_at ? new Date(res.generated_at) : new Date()
+    loadedKey.value = 'all'
+    allAwaiting.value = false
+    loading.value = false
+    error.value = ''
+  }
+
+  // Периодически опрашиваем сервер, пока фоновый расчёт не завершится.
+  function startAllPoll() {
+    stopAllPoll()
+    allPollTimer = setInterval(async () => {
+      if (state.bot !== ALL_BOTS) { stopAllPoll(); return }
+      try {
+        const res = await apiGet('/statistics/all')
+        if (state.bot !== ALL_BOTS) { stopAllPoll(); return }
+        if (res.status === 'ready') { applyAll(res); stopAllPoll() }
+        else if (res.status === 'error') { error.value = res.message || 'Ошибка расчёта'; allAwaiting.value = false; stopAllPoll() }
+        // 'queued' / 'none' — продолжаем ждать
+      } catch (e) { /* молча ждём следующий тик */ }
+    }, 5000)
+  }
+
+  // Запуск сводного расчёта (по кнопке). force — пересчитать заново.
+  async function startAll(force) {
+    stopAllPoll()
+    const my = ++statToken
+    loading.value = true
+    error.value = ''
+    allAwaiting.value = false
+    try {
+      const res = await apiSend('POST', '/statistics/all' + (force ? '?refresh=1' : ''))
+      if (my !== statToken) return
+      if (res.status === 'ready') {
+        applyAll(res)
+      } else if (res.status === 'error') {
+        error.value = res.message || 'Не удалось собрать статистику'
+        loading.value = false
+      } else { // queued — считается в фоне
+        allAwaiting.value = true
+        loading.value = false
+        startAllPoll()
+      }
+    } catch (e) {
+      if (my === statToken) { error.value = e.message || 'Ошибка запроса'; loading.value = false }
+    }
+  }
+
+  // При входе в режим «Все боты» — показать готовый отчёт, если он уже есть.
+  async function checkAll() {
+    try {
+      const res = await apiGet('/statistics/all')
+      if (state.bot !== ALL_BOTS) return
+      if (res.status === 'ready') applyAll(res)
+      else if (res.status === 'queued') { allAwaiting.value = true; startAllPoll() }
+    } catch (e) { /* молча — пользователь нажмёт «Собрать» */ }
+  }
+
+  // Собрать статистику (по кнопке). В режиме «Все боты» — фоновый расчёт.
+  const build = () => (state.bot === ALL_BOTS ? startAll(false) : loadStats(false))
+  // Принудительное обновление (мимо кэшей фронта и сервера).
+  const reload = () => (state.bot === ALL_BOTS ? startAll(true) : loadStats(true))
 
   // Статистика НЕ загружается автоматически — только по кнопке «Собрать».
   async function loadMe() {
@@ -156,13 +231,18 @@ export function useStats(props) {
 
   // Смена бота — перечитываем только фильтры (контрагенты/ссылки), без статистики.
   watch(() => state.bot, async (v) => {
+    stopAllPoll()
+    allAwaiting.value = false
     if (!v) return
+    if (v === ALL_BOTS) { checkAll(); return } // сводка: фильтры не нужны
     try {
       await loadFilters()
     } catch (e) {
       error.value = e.message || 'Ошибка загрузки фильтров'
     }
   })
+
+  onUnmounted(stopAllPoll)
 
   // При изменении любого параметра: если такая комбинация уже есть в кэше
   // фронта — сразу показываем её (без кнопки «Собрать»). Если нет — данные
@@ -187,8 +267,8 @@ export function useStats(props) {
   // ---------- вспомогательное ----------
 
   const currentBot = computed(() => bots.value.find((b) => b.id === state.bot) || null)
-  const botPlatform = computed(() => (currentBot.value?.platform === 'MAX' ? 'MAX' : 'TG'))
-  const botLabel = computed(() => currentBot.value?.name || '—')
+  const botPlatform = computed(() => (state.bot === ALL_BOTS ? 'ВСЕ' : (currentBot.value?.platform === 'MAX' ? 'MAX' : 'TG')))
+  const botLabel = computed(() => (state.bot === ALL_BOTS ? 'Все боты' : (currentBot.value?.name || '—')))
   const cpName = (id) => contragents.value.find((c) => c.id === id)?.name
   const linkName = (id) => links.value.find((l) => l.id === id)?.name
 
@@ -198,6 +278,7 @@ export function useStats(props) {
   })
   const status = computed(() => {
     if (loading.value) return 'Обновление…'
+    if (allAwaiting.value) return 'Считаем в фоне…'
     if (error.value) return 'Ошибка: ' + error.value
     if (updatedAt.value) return 'Обновлено ' + updatedLabel.value
     return '—'
@@ -400,9 +481,12 @@ export function useStats(props) {
     let s = {}
 
     if (st.sheet === 'bot') {
+      const opts = bots.value.map((b) => ({ id: b.id, name: b.name, sub: b.platform === 'MAX' ? 'MAX' : 'Telegram' }))
+      // «Все боты» — только тем, у кого есть право на общую статистику.
+      if (canGeneral.value) opts.unshift({ id: ALL_BOTS, name: 'Все боты', sub: 'Сводная статистика за всё время' })
       s = {
         isPick: true, multi: false, kicker: 'Обзор статистики', title: 'Бот', ph: 'Поиск бота',
-        options: bots.value.map((b) => ({ id: b.id, name: b.name, sub: b.platform === 'MAX' ? 'MAX' : 'Telegram' })),
+        options: opts,
         current: st.bot,
       }
     } else if (st.sheet === 'link') {
@@ -498,6 +582,7 @@ export function useStats(props) {
     botPlatform, botLabel, status, loading, error, reload,
     build, hasData, dirty,
     access, denied, isAdmin, canGeneral,
+    allMode, allAwaiting,
     setPeriod, setTab, openSheet, openDetail, closeSheet, resetFilters, pickOption,
   }
 }
