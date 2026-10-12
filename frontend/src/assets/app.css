@@ -1,7 +1,27 @@
 /* Глобальные стили экрана. Токены берутся из modernist.css. */
 
-html, body { overscroll-behavior: none; }
-body { margin: 0; background: var(--color-neutral-300); -webkit-font-smoothing: antialiased; }
+html, body {
+  overscroll-behavior: none;              /* без «резинки» и протягивания фона */
+  -webkit-text-size-adjust: 100%;         /* iOS не меняет размер шрифта сам */
+  text-size-adjust: 100%;
+  touch-action: pan-x pan-y;              /* разрешаем только скролл, без pinch-zoom */
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  margin: 0; background: var(--color-neutral-300); -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none; user-select: none;   /* отключаем выделение и zoom по двойному тапу */
+  overflow-x: hidden;
+}
+/* Текст, который всё-таки нужно выделять — помечай классом .selectable */
+.selectable { -webkit-user-select: text; user-select: text; }
+
+/* Любой интерактив — без задержки и без zoom по двойному тапу (особенно iOS) */
+button, a, .row, .cell, [role="button"], input, select, textarea, label {
+  touch-action: manipulation;
+}
+/* iOS увеличивает экран при фокусе на поле с шрифтом < 16px — держим 16px */
+input, select, textarea { font-size: 16px; }
+
 button { font: inherit; color: inherit; }
 a { color: var(--color-accent); }
 a:hover { color: var(--color-accent-600); }
