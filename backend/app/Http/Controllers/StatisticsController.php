@@ -101,9 +101,9 @@ class StatisticsController extends Controller
             abort(403, 'Нет доступа к общей статистике');
         }
 
-        $ids = $this->accessibleBotIds($access);
+        $ids = $this->allBotIds();
         if (empty($ids)) {
-            return response()->json(['status' => 'error', 'message' => 'Нет доступных ботов']);
+            return response()->json(['status' => 'error', 'message' => 'Нет ботов в системе']);
         }
 
         $key    = $this->allCacheKey($ids);
@@ -143,7 +143,7 @@ class StatisticsController extends Controller
             abort(403, 'Нет доступа к общей статистике');
         }
 
-        $ids    = $this->accessibleBotIds($access);
+        $ids    = $this->allBotIds();
         $key    = $this->allCacheKey($ids);
         $report = AllBotsReport::where('cache_key', $key)->first();
 
@@ -169,11 +169,14 @@ class StatisticsController extends Controller
         return $out;
     }
 
-    /** id всех ботов, доступных менеджеру (для сводной статистики). */
-    private function accessibleBotIds(ManagerAccess $access): array
+    /**
+     * id всех ботов системы — для сводной статистики.
+     * Право «general» означает доступ к сводке ПО ВСЕМ ботам (так и подписано
+     * в админке), независимо от индивидуального доступа к конкретным ботам.
+     */
+    private function allBotIds(): array
     {
-        $all = Bots::query()->orderBy('id')->pluck('id')->map(fn ($i) => (int) $i)->all();
-        return array_values(array_filter($all, fn ($id) => $access->canBot((int) $id)));
+        return Bots::query()->orderBy('id')->pluck('id')->map(fn ($i) => (int) $i)->all();
     }
 
     /** Ключ отчёта — подпись набора ботов (не зависит от порядка). */

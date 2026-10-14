@@ -77,7 +77,7 @@ class ManagerAccess
 
     public function canBot(int $botId): bool
     {
-        return $this->bots === 'all' || in_array($botId, $this->bots, true);
+        return $this->isAdmin || $this->bots === 'all' || in_array($botId, $this->bots, true);
     }
 
     /** Разрешённые контрагенты для бота: 'all' | int[]. */
@@ -92,12 +92,13 @@ class ManagerAccess
 
     public function canSection(string $key): bool
     {
-        return $this->sections === 'all' || in_array($key, $this->sections, true);
+        return $this->isAdmin || $this->sections === 'all' || in_array($key, $this->sections, true);
     }
 
     public function canGeneral(): bool
     {
-        return $this->general;
+        // Админ (и супер-админ) видит всё, общую статистику в том числе.
+        return $this->isAdmin || $this->general;
     }
 
     /** Данные для /api/me. */
@@ -107,10 +108,10 @@ class ManagerAccess
             'telegram_id' => $this->telegramId,
             'name'        => $this->name,
             'is_admin'    => $this->isAdmin,
-            'bots'        => $this->bots,
+            'bots'        => $this->isAdmin ? 'all' : $this->bots,
             'contragents' => $this->contragents,
-            'sections'    => $this->sections === 'all' ? self::ALL_SECTIONS : $this->sections,
-            'general'     => $this->general,
+            'sections'    => ($this->isAdmin || $this->sections === 'all') ? self::ALL_SECTIONS : $this->sections,
+            'general'     => $this->isAdmin || $this->general,
         ];
     }
 }

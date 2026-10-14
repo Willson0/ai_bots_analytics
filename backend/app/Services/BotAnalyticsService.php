@@ -163,6 +163,10 @@ class BotAnalyticsService
 
         $query = $this->db->table($table)
             ->whereBetween($dateColumn, [$this->fromStr(), $this->toStr()]);
+        // Считаем только реальные промты — где потрачены токены (token_used > 0).
+        if ($table === 'query_logs') {
+            $query->where('token_used', '>', 0);
+        }
         $this->applyUserFilter($query, $table === 'users');
 
         if ($this->granularity === 'hour') {
@@ -386,7 +390,8 @@ class BotAnalyticsService
 
         $q = $this->db->table('query_logs as ql')
             ->join('users as u', 'u.id', '=', 'ql.user_id')
-            ->whereBetween('ql.created_at', [$from, $this->toStr()]);
+            ->whereBetween('ql.created_at', [$from, $this->toStr()])
+            ->where('ql.token_used', '>', 0); // только реальные промты
         $this->applyLinkFilterColumn($q, 'u.link');
 
         $row = $q->selectRaw(
@@ -539,7 +544,8 @@ class BotAnalyticsService
     private function queryLogsBase(): Builder
     {
         $q = $this->db->table('query_logs')
-            ->whereBetween('created_at', [$this->fromStr(), $this->toStr()]);
+            ->whereBetween('created_at', [$this->fromStr(), $this->toStr()])
+            ->where('token_used', '>', 0); // только реальные промты (не «кончились токены»)
         $this->applyUserFilter($q, false);
         return $q;
     }
