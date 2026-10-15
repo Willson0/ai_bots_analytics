@@ -104,6 +104,11 @@ class BotAnalyticsService
 
             $seconds = max(1, $this->to->getTimestamp() - $this->from->getTimestamp());
             $this->bucketWidth = (int) ceil($seconds / self::ALL_TIME_BUCKETS);
+        } elseif ($this->time >= 180) {
+            // Длинные периоды (год и т.п.) — помесячная разбивка (≈12 столбцов).
+            $this->granularity = 'month';
+            $months = max(1, (int) round($this->time / 30));
+            $this->from = $now->copy()->startOfMonth()->subMonths($months - 1);
         } else {
             $this->granularity = 'day';
             $this->from = $now->copy()->startOfDay()->subDays($this->time - 1);
@@ -139,6 +144,12 @@ class BotAnalyticsService
                 $buckets[] = ['key' => $cursor->format('Y-m-d'), 'label' => $cursor->format('Y-m-d')];
                 $cursor->addDay();
             }
+        } elseif ($this->granularity === 'month') {
+            $cursor = $this->from->copy()->startOfMonth();
+            while ($cursor->lessThanOrEqualTo($this->to)) {
+                $buckets[] = ['key' => $cursor->format('Y-m'), 'label' => $cursor->format('Y-m')];
+                $cursor->addMonth();
+            }
         } else { // all
             for ($i = 0; $i < self::ALL_TIME_BUCKETS; $i++) {
                 $start = $this->from->copy()->addSeconds($i * $this->bucketWidth);
@@ -173,6 +184,8 @@ class BotAnalyticsService
             $rows = $query->selectRaw("HOUR($dateColumn) as k, $countExpr as c")->groupBy('k')->pluck('c', 'k');
         } elseif ($this->granularity === 'day') {
             $rows = $query->selectRaw("DATE($dateColumn) as k, $countExpr as c")->groupBy('k')->pluck('c', 'k');
+        } elseif ($this->granularity === 'month') {
+            $rows = $query->selectRaw("DATE_FORMAT($dateColumn, '%Y-%m') as k, $countExpr as c")->groupBy('k')->pluck('c', 'k');
         } else { // all
             $rows = $query->selectRaw(
                 "FLOOR(TIMESTAMPDIFF(SECOND, ?, $dateColumn) / ?) as k, $countExpr as c",

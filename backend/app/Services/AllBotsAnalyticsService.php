@@ -72,12 +72,18 @@ class AllBotsAnalyticsService
             ];
             $granularity = 'all';
         } else {
-            // Неделя/месяц/год: одинаковая дневная шкала, отсчитанная от «сейчас».
-            // Она не зависит от данных бота, поэтому у всех ботов бакеты совпадают
-            // и forcePeriod не нужен — каждый бот посчитает её сам по $this->time.
-            $from = $now->copy()->startOfDay()->subDays($this->time - 1);
+            // Неделя/месяц/год: шкала, отсчитанная от «сейчас», одинаковая у всех
+            // ботов (не зависит от их данных), поэтому forcePeriod не нужен —
+            // каждый бот посчитает её сам по $this->time. Год и длиннее — помесячно.
             $forcePeriod = null;
-            $granularity = 'day';
+            if ($this->time >= 180) {
+                $granularity = 'month';
+                $months = max(1, (int) round($this->time / 30));
+                $from = $now->copy()->startOfMonth()->subMonths($months - 1);
+            } else {
+                $granularity = 'day';
+                $from = $now->copy()->startOfDay()->subDays($this->time - 1);
+            }
         }
 
         // --- 2. Аккумуляторы --------------------------------------------
