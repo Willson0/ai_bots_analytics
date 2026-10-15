@@ -106,7 +106,8 @@ class StatisticsController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Нет ботов в системе']);
         }
 
-        $key    = $this->allCacheKey($ids);
+        $time   = $this->allTime($request);
+        $key    = $this->allCacheKey($ids, $time);
         $force  = $request->boolean('refresh');
         $report = AllBotsReport::where('cache_key', $key)->first();
 
@@ -126,7 +127,7 @@ class StatisticsController extends Controller
             ['cache_key' => $key],
             ['status' => 'queued', 'message' => null]
         );
-        ComputeAllBotsStats::dispatch($ids, (int) $access->telegramId, $key);
+        ComputeAllBotsStats::dispatch($ids, (int) $access->telegramId, $key, $time);
 
         return response()->json(['status' => 'queued']);
     }
@@ -144,7 +145,8 @@ class StatisticsController extends Controller
         }
 
         $ids    = $this->allBotIds();
-        $key    = $this->allCacheKey($ids);
+        $time   = $this->allTime($request);
+        $key    = $this->allCacheKey($ids, $time);
         $report = AllBotsReport::where('cache_key', $key)->first();
 
         if (!$report) {
@@ -179,12 +181,19 @@ class StatisticsController extends Controller
         return Bots::query()->orderBy('id')->pluck('id')->map(fn ($i) => (int) $i)->all();
     }
 
-    /** Ключ отчёта — подпись набора ботов (не зависит от порядка). */
-    private function allCacheKey(array $ids): string
+    /** Период сводной статистики из запроса: 0 (всё время) / 7 / 30 / 365. */
+    private function allTime(Request $request): int
+    {
+        $time = (int) $request->input('time', 0);
+        return in_array($time, [0, 7, 30, 365], true) ? $time : 0;
+    }
+
+    /** Ключ отчёта — подпись набора ботов + период (не зависит от порядка). */
+    private function allCacheKey(array $ids, int $time = 0): string
     {
         $ids = array_map('intval', $ids);
         sort($ids);
-        return 'all:' . md5(implode('_', $ids));
+        return 'all:' . $time . ':' . md5(implode('_', $ids));
     }
 
     /** Обнуляет разделы ответа, недоступные менеджеру. */

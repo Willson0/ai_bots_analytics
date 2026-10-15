@@ -27,10 +27,14 @@ class AllBotsAnalyticsService
     /** @var int[] */
     private array $botIds;
 
+    /** Период: 0 — всё время; 7/30/365 и т.п. — N дней. */
+    private int $time;
+
     /** @param int[] $botIds */
-    public function __construct(array $botIds)
+    public function __construct(array $botIds, int $time = 0)
     {
         $this->botIds = array_values(array_unique(array_map('intval', $botIds)));
+        $this->time = $time;
     }
 
     public function compute(): array
@@ -38,34 +42,43 @@ class AllBotsAnalyticsService
         /** @var Bots[] $bots */
         $bots = Bots::whereIn('id', $this->botIds)->get();
 
-        // --- 1. Общий временной отрезок ---------------------------------
+        // --- 1. Временной отрезок (общий для всех ботов) ----------------
         $now = Carbon::now(self::TZ);
-        $earliest = null;
 
-        foreach ($bots as $bot) {
-            try {
-                $min = BotDatabase::connect($bot)->table('users')->min('created_at');
-            } catch (Throwable $e) {
-                continue; // бот недоступен — учтём на основном проходе
-            }
-            if ($min) {
-                $c = Carbon::parse($min, self::TZ);
-                if ($earliest === null || $c->lessThan($earliest)) {
-                    $earliest = $c;
+        if ($this->time === 0) {
+            // Всё время: отрезок от самой ранней регистрации среди всех ботов,
+            // поделённый на равные бакеты (одинаково для всех ботов).
+            $earliest = null;
+            foreach ($bots as $bot) {
+                try {
+                    $min = BotDatabase::connect($bot)->table('users')->min('created_at');
+                } catch (Throwable $e) {
+                    continue; // бот недоступен — учтём на основном проходе
+                }
+                if ($min) {
+                    $c = Carbon::parse($min, self::TZ);
+                    if ($earliest === null || $c->lessThan($earliest)) {
+                        $earliest = $c;
+                    }
                 }
             }
+            $from = $earliest ?? $now->copy()->subDay();
+            $seconds = max(1, $now->getTimestamp() - $from->getTimestamp());
+            $forcePeriod = [
+                'from'        => $from,
+                'to'          => $now,
+                'granularity' => 'all',
+                'bucketWidth' => (int) ceil($seconds / BotAnalyticsService::ALL_TIME_BUCKETS),
+            ];
+            $granularity = 'all';
+        } else {
+            // Неделя/месяц/год: одинаковая дневная шкала, отсчитанная от «сейчас».
+            // Она не зависит от данных бота, поэтому у всех ботов бакеты совпадают
+            // и forcePeriod не нужен — каждый бот посчитает её сам по $this->time.
+            $from = $now->copy()->startOfDay()->subDays($this->time - 1);
+            $forcePeriod = null;
+            $granularity = 'day';
         }
-
-        $from = $earliest ?? $now->copy()->subDay();
-        $seconds = max(1, $now->getTimestamp() - $from->getTimestamp());
-        $bucketWidth = (int) ceil($seconds / BotAnalyticsService::ALL_TIME_BUCKETS);
-
-        $forcePeriod = [
-            'from'        => $from,
-            'to'          => $now,
-            'granularity' => 'all',
-            'bucketWidth' => $bucketWidth,
-        ];
 
         // --- 2. Аккумуляторы --------------------------------------------
         $labels = null;
@@ -91,7 +104,7 @@ class AllBotsAnalyticsService
         // --- 3. Основной проход по ботам --------------------------------
         foreach ($bots as $bot) {
             try {
-                $svc = new BotAnalyticsService($bot, 0, [], [], $forcePeriod);
+                $svc = new BotAnalyticsService($bot, $this->time, [], [], $forcePeriod);
                 $r = $svc->rawTotals();
             } catch (Throwable $e) {
                 $skipped[] = (int) $bot->id;
@@ -165,10 +178,10 @@ class AllBotsAnalyticsService
 
         return [
             'period' => [
-                'time'        => 0,
+                'time'        => $this->time,
                 'from'        => $from->toIso8601String(),
                 'to'          => $now->toIso8601String(),
-                'granularity' => 'all',
+                'granularity' => $granularity,
             ],
             'users' => [
                 'active' => [

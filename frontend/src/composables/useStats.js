@@ -1,5 +1,5 @@
 import { reactive, ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { PERIODS, QUERY_GROUPS, TABS } from '../data/constants'
+import { PERIODS, ALL_PERIODS, QUERY_GROUPS, TABS } from '../data/constants'
 import { apiGet, apiSend } from '../api'
 
 // Сентинел «Все боты» (сводная статистика). Намеренно не 'all',
@@ -61,8 +61,11 @@ export function useStats(props) {
 
   // Сводная статистика по всем ботам (фоновый расчёт).
   const allAwaiting = ref(false) // идёт расчёт в фоне — ждём уведомление
+  const allPeriod = ref('all')   // период сводки: '7' | '30' | '365' | 'all'
   let allPollTimer = null
   const allMode = computed(() => state.bot === ALL_BOTS)
+  // Значение time для текущего периода сводки.
+  const allTimeValue = () => (ALL_PERIODS.find((p) => p.k === allPeriod.value) || ALL_PERIODS[ALL_PERIODS.length - 1]).time
 
   // ---------- загрузка ----------
 
@@ -70,7 +73,7 @@ export function useStats(props) {
   // чтобы переключение назад показывало данные мгновенно, без нового запроса.
   const cacheStore = new Map()
   const cacheKey = () => {
-    if (state.bot === ALL_BOTS) return 'all' // сводка: без периода и фильтров
+    if (state.bot === ALL_BOTS) return 'all:' + allPeriod.value // сводка: ключ по периоду
     const lks = [...state.linkSel].sort((a, b) => a - b).join('_')
     return `${state.bot}|${state.period}|${state.cp ?? ''}|${lks}`
   }
@@ -144,19 +147,19 @@ export function useStats(props) {
   function applyAll(res) {
     data.value = res.data
     updatedAt.value = res.generated_at ? new Date(res.generated_at) : new Date()
-    loadedKey.value = 'all'
+    loadedKey.value = cacheKey()
     allAwaiting.value = false
     loading.value = false
     error.value = ''
   }
 
-  // Периодически опрашиваем сервер, пока фоновый расчёт не завершится.
-  function startAllPoll() {
+  // Периодически опрашиваем сервер по выбранному периоду, пока расчёт не готов.
+  function startAllPoll(time) {
     stopAllPoll()
     allPollTimer = setInterval(async () => {
       if (state.bot !== ALL_BOTS) { stopAllPoll(); return }
       try {
-        const res = await apiGet('/statistics/all')
+        const res = await apiGet('/statistics/all', { time })
         if (state.bot !== ALL_BOTS) { stopAllPoll(); return }
         if (res.status === 'ready') { applyAll(res); stopAllPoll() }
         else if (res.status === 'error') { error.value = res.message || 'Ошибка расчёта'; allAwaiting.value = false; stopAllPoll() }
@@ -169,11 +172,12 @@ export function useStats(props) {
   async function startAll(force) {
     stopAllPoll()
     const my = ++statToken
+    const time = allTimeValue()
     loading.value = true
     error.value = ''
     allAwaiting.value = false
     try {
-      const res = await apiSend('POST', '/statistics/all' + (force ? '?refresh=1' : ''))
+      const res = await apiSend('POST', '/statistics/all', { time, refresh: force ? 1 : undefined })
       if (my !== statToken) return
       if (res.status === 'ready') {
         applyAll(res)
@@ -183,20 +187,21 @@ export function useStats(props) {
       } else { // queued — считается в фоне
         allAwaiting.value = true
         loading.value = false
-        startAllPoll()
+        startAllPoll(time)
       }
     } catch (e) {
       if (my === statToken) { error.value = e.message || 'Ошибка запроса'; loading.value = false }
     }
   }
 
-  // При входе в режим «Все боты» — показать готовый отчёт, если он уже есть.
+  // При входе в режим «Все боты» / смене периода — показать готовый отчёт, если есть.
   async function checkAll() {
+    const time = allTimeValue()
     try {
-      const res = await apiGet('/statistics/all')
+      const res = await apiGet('/statistics/all', { time })
       if (state.bot !== ALL_BOTS) return
       if (res.status === 'ready') applyAll(res)
-      else if (res.status === 'queued') { allAwaiting.value = true; startAllPoll() }
+      else if (res.status === 'queued') { allAwaiting.value = true; startAllPoll(time) }
     } catch (e) { /* молча — пользователь нажмёт «Собрать» */ }
   }
 
@@ -240,6 +245,14 @@ export function useStats(props) {
     } catch (e) {
       error.value = e.message || 'Ошибка загрузки фильтров'
     }
+  })
+
+  // Смена периода сводки — показать готовый отчёт для него или предложить собрать.
+  watch(allPeriod, () => {
+    if (state.bot !== ALL_BOTS) return
+    stopAllPoll()
+    allAwaiting.value = false
+    checkAll()
   })
 
   onUnmounted(stopAllPoll)
@@ -287,11 +300,16 @@ export function useStats(props) {
   // ---------- период / навигация ----------
 
   const period = computed(() => {
-    const p = PERIODS.find((x) => x.k === state.period) || PERIODS[0]
+    const list = state.bot === ALL_BOTS ? ALL_PERIODS : PERIODS
+    const key = state.bot === ALL_BOTS ? allPeriod.value : state.period
+    const p = list.find((x) => x.k === key) || list[0]
     const s = data.value?.users?.active?.series || data.value?.users?.new?.series || []
     return { ...p, from: s.length ? s[0].label : '', to: s.length ? s[s.length - 1].label : '' }
   })
-  const periods = computed(() => PERIODS.map((p) => ({ k: p.k, label: p.label, active: p.k === state.period })))
+  const periods = computed(() => {
+    if (state.bot === ALL_BOTS) return ALL_PERIODS.map((p) => ({ k: p.k, label: p.label, active: p.k === allPeriod.value }))
+    return PERIODS.map((p) => ({ k: p.k, label: p.label, active: p.k === state.period }))
+  })
   const tabs = computed(() => {
     const allowed = access.value?.sections || null
     return TABS
@@ -541,7 +559,11 @@ export function useStats(props) {
 
   // Во время загрузки блокируем действия, инициирующие новый запрос,
   // чтобы не плодить параллельные обращения к серверу.
-  const setPeriod = (k) => { if (loading.value) return; state.period = k }
+  const setPeriod = (k) => {
+    if (loading.value) return
+    if (state.bot === ALL_BOTS) allPeriod.value = k
+    else state.period = k
+  }
   const setTab = (k) => { state.tab = k }
   const openSheet = (type) => { if (loading.value) return; state.sheet = type; state.q = '' }
   const openDetail = (d) => { state.sheet = 'detail'; state.detailData = d }

@@ -58,7 +58,7 @@ const view = ref('dashboard') // 'dashboard' | 'managers'
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path :d="chevron" /></svg>
     </button>
 
-    <div class="periods" v-if="!allMode">
+    <div class="periods">
       <button
         v-for="p in periods" :key="p.k"
         class="period" :class="{ 'period--on': p.active }"

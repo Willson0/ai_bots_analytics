@@ -32,12 +32,13 @@ class ComputeAllBotsStats implements ShouldQueue
         public array $botIds,
         public int $telegramId,
         public string $cacheKey,
+        public int $time = 0,
     ) {
     }
 
     public function handle(): void
     {
-        $data = (new AllBotsAnalyticsService($this->botIds))->compute();
+        $data = (new AllBotsAnalyticsService($this->botIds, $this->time))->compute();
 
         AllBotsReport::updateOrCreate(
             ['cache_key' => $this->cacheKey],
