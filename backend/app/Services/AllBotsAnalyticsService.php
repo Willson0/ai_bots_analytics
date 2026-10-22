@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Bots;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -103,6 +104,9 @@ class AllBotsAnalyticsService
         $modelsText = [];
         $modelsImage = [];
         $products = [];
+        $btnCounts = [];
+        $btnTotal = 0;
+        $btnUsers = 0;
 
         $botsUsed = 0;
         $skipped = [];
@@ -167,9 +171,28 @@ class AllBotsAnalyticsService
             $acc['m_trial_to_pro'] += $r['m']['trial_to_pro_count'];
 
             $this->mergeProducts($products, $r['products']);
+
+            $btnTotal += $r['buttons']['total'] ?? 0;
+            $btnUsers += $r['buttons']['users'] ?? 0;
+            foreach (($r['buttons']['counts'] ?? []) as $cd => $c) {
+                $btnCounts[(string) $cd] = ($btnCounts[(string) $cd] ?? 0) + (int) $c;
+            }
         }
 
         $labels = $labels ?? [];
+
+        // Кнопки: топ по числу нажатий, имена — из справочника button_labels.
+        arsort($btnCounts);
+        $btnTop = array_slice($btnCounts, 0, BotAnalyticsService::TOP_LIMIT, true);
+        $btnLabels = $this->buttonLabels(array_keys($btnTop));
+        $btnItems = [];
+        foreach ($btnTop as $cd => $c) {
+            $btnItems[] = [
+                'name'    => $btnLabels[(string) $cd] ?? 'Без названия',
+                'count'   => (int) $c,
+                'percent' => $this->pct((int) $c, $btnTotal),
+            ];
+        }
 
         // --- 4. Сборка результата (проценты/средние — здесь) ------------
         $series = fn (array $counts) => array_map(
@@ -241,12 +264,35 @@ class AllBotsAnalyticsService
                 'trial_to_pro'     => ['count' => $acc['m_trial_to_pro'], 'base' => $acc['m_trial_base'], 'percent' => $this->pct($acc['m_trial_to_pro'], $acc['m_trial_base'])],
                 'top_products'     => $this->topProducts($products),
             ],
-            'buttons' => ['total' => null, 'top' => null],
+            'buttons' => ['total' => $btnTotal, 'users' => $btnUsers, 'top' => $btnItems],
             'meta' => [
                 'bots'    => $botsUsed,
                 'skipped' => $skipped,
             ],
         ];
+    }
+
+    /**
+     * Человекочитаемые названия кнопок из справочника button_labels
+     * (управляющая БД, правится вручную через SQL): callback_data -> name.
+     *
+     * @param  string[] $callbackData
+     * @return array<string,string>
+     */
+    private function buttonLabels(array $callbackData): array
+    {
+        if (empty($callbackData)) {
+            return [];
+        }
+        try {
+            return DB::table('button_labels')
+                ->whereIn('callback_data', $callbackData)
+                ->pluck('name', 'callback_data')
+                ->map(fn ($n) => (string) $n)
+                ->all();
+        } catch (Throwable $e) {
+            return [];
+        }
     }
 
     /** Слить счётчики моделей: $into[model] += $from[model]. */

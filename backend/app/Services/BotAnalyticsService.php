@@ -6,6 +6,7 @@ use App\Models\Bots;
 use Carbon\Carbon;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Собирает статистику по конкретному боту.
@@ -365,6 +366,7 @@ class BotAnalyticsService
             'q'             => $q,
             'm'             => $m,
             'products'      => $products,
+            'buttons'       => $this->buttonsRaw(),
         ];
     }
 
@@ -795,12 +797,89 @@ class BotAnalyticsService
     }
 
     // ------------------------------------------------------------------
-    // Кнопки (пока не считаем — возвращаем null)
+    // Кнопки (button_clicks, группировка по callback_data)
     // ------------------------------------------------------------------
 
     private function buttons(): array
     {
-        return ['total' => null, 'top' => null];
+        $raw = $this->buttonsRaw();
+
+        $counts = $raw['counts'];
+        arsort($counts);
+        $top = array_slice($counts, 0, self::TOP_LIMIT, true);
+
+        $labels = $this->buttonLabels(array_keys($top));
+        $total = $raw['total'];
+
+        $items = [];
+        foreach ($top as $cd => $c) {
+            $items[] = [
+                // Сырую callback_data наружу не отдаём — только человекочитаемое имя.
+                'name'    => $labels[(string) $cd] ?? 'Без названия',
+                'count'   => (int) $c,
+                'percent' => $this->pct((int) $c, $total),
+            ];
+        }
+
+        return ['total' => $total, 'users' => $raw['users'], 'top' => $items];
+    }
+
+    /**
+     * Сырые нажатия по кнопкам: всего, уникальных пользователей и счётчики по
+     * callback_data (без имён и без ограничения — для презентации и для сводной).
+     * Если в БД бота нет таблицы button_clicks — возвращаем пусто.
+     *
+     * @return array{total:int,users:int,counts:array<string,int>}
+     */
+    private function buttonsRaw(): array
+    {
+        try {
+            $base = $this->db->table('button_clicks')
+                ->whereBetween('clicked_at', [$this->fromStr(), $this->toStr()]);
+            // Фильтр по ссылке/контрагенту — через user_id (как в query_logs).
+            $this->applyUserFilter($base, false);
+
+            $rows = (clone $base)
+                ->selectRaw('callback_data, COUNT(*) AS c')
+                ->groupBy('callback_data')
+                ->pluck('c', 'callback_data');
+
+            $counts = [];
+            foreach ($rows as $cd => $c) {
+                $counts[(string) $cd] = (int) $c;
+            }
+
+            return [
+                'total'  => array_sum($counts),
+                'users'  => (int) (clone $base)->distinct()->count('user_id'),
+                'counts' => $counts,
+            ];
+        } catch (\Throwable $e) {
+            return ['total' => 0, 'users' => 0, 'counts' => []];
+        }
+    }
+
+    /**
+     * Человекочитаемые названия кнопок из справочника button_labels
+     * (управляющая БД, редактируется вручную через SQL): callback_data -> name.
+     *
+     * @param  string[] $callbackData
+     * @return array<string,string>
+     */
+    private function buttonLabels(array $callbackData): array
+    {
+        if (empty($callbackData)) {
+            return [];
+        }
+        try {
+            return DB::table('button_labels')
+                ->whereIn('callback_data', $callbackData)
+                ->pluck('name', 'callback_data')
+                ->map(fn ($n) => (string) $n)
+                ->all();
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     // ------------------------------------------------------------------
