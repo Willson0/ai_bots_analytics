@@ -815,7 +815,7 @@ class BotAnalyticsService
         foreach ($top as $cd => $c) {
             $items[] = [
                 // Сырую callback_data наружу не отдаём — только человекочитаемое имя.
-                'name'    => $labels[(string) $cd] ?? 'Без названия',
+                'name'    => $labels[(string) $cd] ?? $cd,
                 'count'   => (int) $c,
                 'percent' => $this->pct((int) $c, $total),
             ];
