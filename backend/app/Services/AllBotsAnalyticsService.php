@@ -183,7 +183,8 @@ class AllBotsAnalyticsService
 
         // Кнопки: топ по числу нажатий, имена — из справочника button_labels.
         arsort($btnCounts);
-        $btnTop = array_slice($btnCounts, 0, BotAnalyticsService::TOP_LIMIT, true);
+        // Полный список без обрезки: фронт показывает топ-10 и кнопку «Посмотреть все».
+        $btnTop = $btnCounts;
         $btnLabels = $this->buttonLabels(array_keys($btnTop));
         $btnItems = [];
         foreach ($btnTop as $cd => $c) {

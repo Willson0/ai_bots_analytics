@@ -36,6 +36,12 @@ class BotAnalyticsService
     /** Сколько позиций показывать в топах. */
     public const TOP_LIMIT = 10;
 
+    /**
+     * Семейства callback_data с динамическим суффиксом (например image_redirect-4756018):
+     * все варианты схлопываются в одну кнопку с базовым именем.
+     */
+    private const GROUPED_CALLBACKS = ['image_redirect', 'download_as_png', 'text_redirect'];
+
     private Connection $db;
 
     private int $time;
@@ -806,7 +812,8 @@ class BotAnalyticsService
 
         $counts = $raw['counts'];
         arsort($counts);
-        $top = array_slice($counts, 0, self::TOP_LIMIT, true);
+        // Полный список без обрезки: фронт показывает топ-10 и кнопку «Посмотреть все».
+        $top = $counts;
 
         $labels = $this->buttonLabels(array_keys($top));
         $total = $raw['total'];
@@ -846,7 +853,8 @@ class BotAnalyticsService
 
             $counts = [];
             foreach ($rows as $cd => $c) {
-                $counts[(string) $cd] = (int) $c;
+                $key = $this->buttonGroupKey((string) $cd);
+                $counts[$key] = ($counts[$key] ?? 0) + (int) $c;
             }
 
             return [
@@ -857,6 +865,19 @@ class BotAnalyticsService
         } catch (\Throwable $e) {
             return ['total' => 0, 'users' => 0, 'counts' => []];
         }
+    }
+
+    /**
+     * Ключ группировки кнопки: image_redirect-4756018 -> image_redirect (только для
+     * семейств из GROUPED_CALLBACKS), остальные callback_data остаются как есть.
+     */
+    private function buttonGroupKey(string $callbackData): string
+    {
+        if (preg_match('/^(.+)-\d+$/', $callbackData, $m)
+            && in_array($m[1], self::GROUPED_CALLBACKS, true)) {
+            return $m[1];
+        }
+        return $callbackData;
     }
 
     /**
